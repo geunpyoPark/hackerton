@@ -119,5 +119,5 @@ export const REPORT_TYPES = [
   { id: 'curb', label: '턱 있음' },
   { id: 'steep_slope', label: '급경사' },
   { id: 'construction', label: '공사 중' },
-  { id: 'blocked', label: '통행 불가' },
+  { id: 'other', label: '기타' },
 ];

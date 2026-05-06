@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
@@ -7,11 +7,12 @@ import { FACILITIES, FACILITY_LAYERS } from '../data/facilities';
 import { searchSubwayRoute } from '../lib/odsay';
 import { searchWalkingRoute } from '../lib/walking';
 import { resolveKakaoPlaceLocation } from '../lib/kakaoPlaces';
+import { fetchAccessibilitySummary } from '../lib/ai';
 import {
   buildAccessibilitySummary,
   calculateReliability,
+  filterReportsForPlace,
   formatRelativeDate,
-  getReportsForPlace,
   getUserTypeLabel,
 } from '../lib/accessibility';
 
@@ -42,7 +43,14 @@ const STATION_COORDS = {
 const LINE_2_EAST = ['강남', '역삼', '선릉', '삼성'];
 const LINE_BUNDANG_GANGNAM = ['선정릉', '선릉', '한티', '도곡', '구룡', '개포동', '대모산입구', '수서'];
 
-export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', routeQuery }) {
+export function RouteScreen({
+  onNavigate,
+  onBack,
+  userType = 'wheelchair',
+  places = PLACES,
+  reports: allReports = [],
+  routeQuery,
+}) {
   const [activeFacilityType, setActiveFacilityType] = useState(null);
   const [routeMode, setRouteMode] = useState('walk');
   const [odsayRoute, setOdsayRoute] = useState(null);
@@ -56,10 +64,19 @@ export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', route
   const toName = routeQuery?.to || '코엑스';
   const fromStation = normalizeStationName(fromName);
   const toStation = normalizeStationName(toName);
-  const mainPlace = PLACES[0];
-  const reports = getReportsForPlace(mainPlace.id);
+  const mainPlace = places.find(place => place.id === 'gangnam-exit-2') || places[0] || PLACES[0];
+  const reports = useMemo(
+    () => filterReportsForPlace(allReports, mainPlace.id),
+    [allReports, mainPlace.id],
+  );
   const reliability = calculateReliability(mainPlace, reports);
-  const summary = buildAccessibilitySummary(mainPlace, reports, userType);
+  const fallbackSummary = useMemo(
+    () => buildAccessibilitySummary(mainPlace, reports, userType),
+    [mainPlace, reports, userType],
+  );
+  const [aiSummary, setAiSummary] = useState(fallbackSummary);
+  const [aiStatus, setAiStatus] = useState('idle');
+  const summary = aiSummary || fallbackSummary;
   const fallbackRoutePlaces = buildRoutePlaces(fromName, toName);
   const transitRoutePlaces = odsayRoute?.stations?.length > 0
     ? buildOdsayRoutePlaces(odsayRoute.stations, fromName, toName)
@@ -213,6 +230,36 @@ export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', route
     const nextType = activeFacilityType === type ? null : type;
     setActiveFacilityType(nextType);
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSummary() {
+      setAiStatus('loading');
+      try {
+        const nextSummary = await fetchAccessibilitySummary({
+          userType,
+          place: mainPlace,
+          reports,
+        });
+        if (!cancelled) {
+          setAiSummary(nextSummary);
+          setAiStatus(nextSummary.source === 'gemini' ? 'gemini' : 'fallback');
+        }
+      } catch {
+        if (!cancelled) {
+          setAiSummary(fallbackSummary);
+          setAiStatus('fallback');
+        }
+      }
+    }
+
+    loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackSummary, mainPlace, reports, userType]);
 
   return (
     <div style={{
@@ -444,7 +491,9 @@ export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', route
                 fontSize: 10, fontWeight: 800,
                 padding: '3px 7px', borderRadius: 5, letterSpacing: '0.04em',
               }}>AI</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: AR.ink }}>AI 추천 안내</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: AR.ink }}>
+                {aiStatus === 'loading' ? 'AI 추천 안내 생성 중' : 'AI 추천 안내'}
+              </div>
             </div>
             <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.55 }}>
               {routeMode === 'walk' ? walkingRecommendation : routeRecommendation.oneLine}{' '}

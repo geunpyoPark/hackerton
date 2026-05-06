@@ -1,7 +1,7 @@
 import { AR } from '../design';
 import { AppLogo } from '../components/Icons';
 
-export function LoginScreen({ onLogin }) {
+export function LoginScreen({ onLogin, loginError }) {
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -67,6 +67,19 @@ export function LoginScreen({ onLogin }) {
 
       {/* Login buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {loginError && (
+          <div style={{
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: '#FEF2F2',
+            color: '#B91C1C',
+            fontSize: 13,
+            lineHeight: 1.4,
+            border: '1px solid #FECACA',
+          }}>
+            {loginError}
+          </div>
+        )}
         <button onClick={() => onLogin?.('kakao')} style={{
           height: 54, borderRadius: 14, border: 'none',
           background: '#FEE500', color: '#191919',
@@ -79,7 +92,7 @@ export function LoginScreen({ onLogin }) {
           </svg>
           카카오로 시작하기
         </button>
-        <button onClick={() => onLogin?.('email')} style={{
+        <button onClick={() => onLogin?.('admin')} style={{
           height: 54, borderRadius: 14, border: `1px solid ${AR.border}`,
           background: '#fff', color: AR.ink,
           fontSize: 16, fontWeight: 600,
@@ -90,7 +103,7 @@ export function LoginScreen({ onLogin }) {
             <path d="M4 7h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7z" stroke={AR.ink} strokeWidth="2"/>
             <path d="M4 7l8 6 8-6" stroke={AR.ink} strokeWidth="2"/>
           </svg>
-          이메일로 로그인
+          관리자 로그인
         </button>
         <div style={{ textAlign: 'center', fontSize: 13, color: AR.muted, marginTop: 8 }}>
           처음이신가요? <span style={{ color: AR.blue, fontWeight: 600 }}>회원가입</span>

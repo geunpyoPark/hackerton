@@ -1,4 +1,76 @@
 import { DEMO_REPORTS, PLACES, USER_TYPES } from '../data/accessibility';
+import { hasSupabaseConfig, supabase } from './supabase';
+
+const USER_ID_KEY = 'ableRouteUserId';
+const PROFILE_OVERRIDES_KEY = 'ableRouteProfileOverrides';
+
+function createLocalId() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  return `local-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function getLocalUserId() {
+  let userId = localStorage.getItem(USER_ID_KEY);
+  if (!userId) {
+    userId = createLocalId();
+    localStorage.setItem(USER_ID_KEY, userId);
+  }
+  return userId;
+}
+
+export function setLocalUserId(userId) {
+  localStorage.setItem(USER_ID_KEY, userId);
+}
+
+export function getKakaoProfileId(kakaoUser) {
+  if (!kakaoUser?.id) return null;
+  return `kakao-${kakaoUser.id}`;
+}
+
+function getProfileOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_OVERRIDES_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function getProfileOverride(userId) {
+  return getProfileOverrides()[userId] || {};
+}
+
+function saveProfileOverride(userId, profile) {
+  const overrides = getProfileOverrides();
+  overrides[userId] = {
+    ...overrides[userId],
+    ...profile,
+    updated_at: new Date().toISOString(),
+  };
+  localStorage.setItem(PROFILE_OVERRIDES_KEY, JSON.stringify(overrides));
+  return overrides[userId];
+}
+
+function withProfileOverride(profile, userId = profile?.id) {
+  if (!profile || !userId) return profile;
+  return {
+    ...profile,
+    ...getProfileOverride(userId),
+  };
+}
+
+function fallbackProfile(userType = localStorage.getItem('ableRouteUserType') || 'wheelchair', userId = getLocalUserId(), nickname = 'able_user01') {
+  const reports = getStoredReports();
+  const profileOverride = getProfileOverride(userId);
+  const points = reports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 0);
+  return {
+    id: userId,
+    nickname: profileOverride.nickname || nickname,
+    user_type: userType,
+    points,
+    level: Math.max(1, Math.floor(points / 500) + 1),
+    picture: profileOverride.picture || null,
+  };
+}
 
 export function getUserTypeLabel(userType) {
   return USER_TYPES.find(type => type.id === userType)?.label || '휠체어';
@@ -21,12 +93,241 @@ export function getAllReports() {
   return [...getStoredReports(), ...DEMO_REPORTS];
 }
 
+export async function ensureLocalProfile(userType = 'wheelchair', options = {}) {
+  const userId = options.userId || getLocalUserId();
+  const profileOverride = getProfileOverride(userId);
+  const nickname = profileOverride.nickname || options.nickname || 'able_user01';
+  localStorage.setItem('ableRouteUserType', userType);
+  setLocalUserId(userId);
+
+  if (!hasSupabaseConfig) return fallbackProfile(userType, userId, nickname);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert({
+      id: userId,
+      nickname,
+      user_type: userType,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.warn('Supabase profile fallback:', error.message);
+    return fallbackProfile(userType, userId, nickname);
+  }
+
+  return withProfileOverride(data, userId);
+}
+
+export async function fetchProfile(userId = getLocalUserId(), userType = 'wheelchair') {
+  if (!hasSupabaseConfig) return fallbackProfile(userType, userId);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Supabase profile fetch fallback:', error.message);
+    return fallbackProfile(userType, userId);
+  }
+
+  return data ? withProfileOverride(data, userId) : ensureLocalProfile(userType, { userId });
+}
+
+export async function fetchPlaces() {
+  if (!hasSupabaseConfig) return PLACES;
+
+  const { data, error } = await supabase
+    .from('places')
+    .select('*')
+    .order('name');
+
+  if (error || !data?.length) {
+    if (error) console.warn('Supabase places fallback:', error.message);
+    return PLACES;
+  }
+
+  return data;
+}
+
+export async function fetchReports() {
+  if (!hasSupabaseConfig) return getAllReports();
+
+  const { data, error } = await supabase
+    .from('reports')
+    .select('*')
+    .eq('status', 'active')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('Supabase reports fallback:', error.message);
+    return getAllReports();
+  }
+
+  return data?.length ? data : getAllReports();
+}
+
+async function addReportPoints(userId, hasImage) {
+  if (!hasSupabaseConfig) return null;
+
+  const current = await fetchProfile(userId);
+  const nextPoints = (current?.points || 0) + 10 + (hasImage ? 20 : 0);
+  const nextLevel = Math.max(1, Math.floor(nextPoints / 500) + 1);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      points: nextPoints,
+      level: nextLevel,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.warn('Supabase points update skipped:', error.message);
+    return current;
+  }
+
+  return data;
+}
+
+export async function createReport(reportInput) {
+  const userId = reportInput.user_id || getLocalUserId();
+  const report = {
+    place_id: reportInput.place_id,
+    user_id: userId,
+    issue_type: reportInput.issue_type,
+    description: reportInput.description,
+    image_url: reportInput.image_url || '',
+    lat: reportInput.lat,
+    lng: reportInput.lng,
+    status: 'active',
+    verified_count: 0,
+  };
+  const classifiedReport = {
+    ...report,
+    ai_category: reportInput.ai_category || null,
+    ai_severity: reportInput.ai_severity || null,
+    ai_summary: reportInput.ai_summary || null,
+    responsible_agency: reportInput.responsible_agency || null,
+    priority_score: reportInput.priority_score || 0,
+  };
+
+  if (!hasSupabaseConfig) {
+    const localReport = {
+      ...classifiedReport,
+      id: `local-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    saveStoredReport(localReport);
+    return { data: localReport, profile: fallbackProfile(), source: 'local' };
+  }
+
+  const { data, error } = await supabase
+    .from('reports')
+    .insert(classifiedReport)
+    .select()
+    .single();
+
+  if (error) {
+    const missingClassificationColumns = ['ai_category', 'ai_severity', 'ai_summary', 'responsible_agency', 'priority_score']
+      .some(column => error.message?.includes(column));
+
+    if (missingClassificationColumns) {
+      const retry = await supabase
+        .from('reports')
+        .insert(report)
+        .select()
+        .single();
+
+      if (!retry.error) {
+        const profile = await addReportPoints(userId, Boolean(report.image_url));
+        return { data: retry.data, profile, source: 'supabase', warning: 'AI 분류 컬럼이 없어 기본 제보만 저장했습니다.' };
+      }
+    }
+
+    console.warn('Supabase report fallback:', error.message);
+    const localReport = {
+      ...classifiedReport,
+      id: `local-${Date.now()}`,
+      created_at: new Date().toISOString(),
+    };
+    saveStoredReport(localReport);
+    return { data: localReport, profile: fallbackProfile(), source: 'fallback', error };
+  }
+
+  const profile = await addReportPoints(userId, Boolean(report.image_url));
+  return { data, profile, source: 'supabase' };
+}
+
+export async function updateUserType(userType, userId = getLocalUserId()) {
+  localStorage.setItem('ableRouteUserType', userType);
+  const profileOverride = getProfileOverride(userId);
+
+  if (!hasSupabaseConfig) return fallbackProfile(userType, userId);
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .upsert({
+      id: userId,
+      nickname: profileOverride.nickname || 'able_user01',
+      user_type: userType,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.warn('Supabase user type fallback:', error.message);
+    return fallbackProfile(userType, userId);
+  }
+
+  return withProfileOverride(data, userId);
+}
+
+export async function updateProfile(userId = getLocalUserId(), profileInput = {}) {
+  const nickname = profileInput.nickname?.trim() || 'able_user01';
+  const picture = profileInput.picture || null;
+  const profileOverride = saveProfileOverride(userId, { nickname, picture });
+
+  if (!hasSupabaseConfig) {
+    return fallbackProfile(profileInput.user_type, userId, nickname);
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      nickname,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Supabase profile update fallback:', error.message);
+    return fallbackProfile(profileInput.user_type, userId, nickname);
+  }
+
+  return withProfileOverride(data || { id: userId, nickname }, userId) || profileOverride;
+}
+
 export function getPlaceById(placeId) {
   return PLACES.find(place => place.id === placeId) || PLACES[0];
 }
 
 export function getReportsForPlace(placeId) {
   return getAllReports().filter(report => report.place_id === placeId);
+}
+
+export function filterReportsForPlace(reports, placeId) {
+  return reports.filter(report => report.place_id === placeId);
 }
 
 export function calculateReliability(place, reports) {

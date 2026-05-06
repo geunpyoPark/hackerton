@@ -3,7 +3,6 @@ import { AR } from '../design';
 import { WheelchairIcon, StrollerIcon, ElderlyIcon, CrutchIcon, AppLogo } from '../components/Icons';
 import { TabBar } from '../components/TabBar';
 import { PLACES } from '../data/accessibility';
-import { getAllReports } from '../lib/accessibility';
 
 const USER_TYPES = [
   { id: 'wheelchair', label: '휠체어', Icon: WheelchairIcon },
@@ -12,12 +11,21 @@ const USER_TYPES = [
   { id: 'crutch',     label: '목발',   Icon: CrutchIcon },
 ];
 
-export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange, routeQuery, onRouteSearch }) {
+export function HomeScreen({
+  onNavigate,
+  userType = 'wheelchair',
+  onUserTypeChange,
+  places = PLACES,
+  reports = [],
+  dataStatus = 'ready',
+  routeQuery,
+  onRouteSearch,
+}) {
   const [from, setFrom] = useState(routeQuery?.from || '강남역');
   const [to, setTo] = useState(routeQuery?.to || '코엑스');
   const activeType = USER_TYPES.find(t => t.id === userType);
-  const reports = getAllReports();
   const recentReports = reports.slice(0, 3);
+  const featuredPlace = places.find(place => place.id === 'gangnam-exit-2') || places[0] || PLACES[0];
 
   return (
     <div style={{
@@ -180,7 +188,7 @@ export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChan
               <div style={{ fontSize: 11, fontWeight: 600, color: AR.muted }}>최근 제보가 많은 역</div>
             </div>
             <div style={{ fontSize: 17, fontWeight: 800, color: AR.ink, marginTop: 4, letterSpacing: '-0.01em' }}>
-              강남역 2번 출구
+              {featuredPlace.name}
             </div>
             <div style={{
               fontSize: 12, color: AR.blue, fontWeight: 600,
@@ -218,7 +226,7 @@ export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChan
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
           {recentReports.map(report => {
-            const place = PLACES.find(item => item.id === report.place_id) || PLACES[0];
+            const place = places.find(item => item.id === report.place_id) || PLACES[0];
             return (
               <ReportRow
                 key={report.id}
@@ -230,6 +238,11 @@ export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChan
               />
             );
           })}
+          {!recentReports.length && (
+            <div style={{ background: '#fff', borderRadius: 14, padding: 14, border: `1px solid ${AR.border}`, fontSize: 13, color: AR.muted }}>
+              {dataStatus === 'loading' ? '제보를 불러오는 중입니다.' : '아직 표시할 제보가 없습니다.'}
+            </div>
+          )}
         </div>
       </div>
 

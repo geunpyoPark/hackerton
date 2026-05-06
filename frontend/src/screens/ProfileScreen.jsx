@@ -1,18 +1,62 @@
+import { useState } from 'react';
 import { AR } from '../design';
 import { TabBar } from '../components/TabBar';
-import { USER_TYPES } from '../data/accessibility';
-import { getStoredReports, getUserTypeLabel } from '../lib/accessibility';
+import { getUserTypeLabel } from '../lib/accessibility';
 
-export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange, onLogout }) {
-  const localReports = getStoredReports();
-  const points = localReports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 1240);
-  const level = Math.max(1, Math.floor(points / 500) + 1);
+export function ProfileScreen({ onNavigate, userType = 'wheelchair', onLogout, onProfileUpdate, profile, reports = [], userId }) {
+  const myReports = reports.filter(report => report.user_id === userId);
+  const points = profile?.points ?? myReports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 0);
+  const level = profile?.level ?? Math.max(1, Math.floor(points / 500) + 1);
+  const nickname = profile?.nickname || 'able_user01';
+  const picture = profile?.picture || null;
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftNickname, setDraftNickname] = useState(nickname);
+  const [draftPicture, setDraftPicture] = useState(picture || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  function openEditor() {
+    setDraftNickname(nickname);
+    setDraftPicture(picture || '');
+    setEditError('');
+    setIsEditing(true);
+  }
+
+  function handlePictureFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => setDraftPicture(String(reader.result || ''));
+    reader.readAsDataURL(file);
+  }
+
+  async function saveProfile() {
+    if (!draftNickname.trim()) {
+      setEditError('이름을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setEditError('');
+      await onProfileUpdate?.({
+        nickname: draftNickname.trim(),
+        picture: draftPicture || null,
+      });
+      setIsEditing(false);
+    } catch (error) {
+      setEditError(error.message || '프로필 저장에 실패했습니다.');
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div style={{
       width: '100%', height: '100%', background: AR.bg,
       display: 'flex', flexDirection: 'column',
-      fontFamily: AR.font, overflow: 'hidden',
+      fontFamily: AR.font, overflow: 'hidden', position: 'relative',
     }}>
       {/* Header */}
       <div style={{
@@ -35,11 +79,15 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
               background: 'linear-gradient(135deg, #DBEAFE, #EDE9FE)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               border: `2px solid ${AR.border}`,
+              overflow: 'hidden',
             }}>
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                <circle cx="16" cy="12" r="5" fill="#94A3B8"/>
-                <path d="M5 28c1-6 6-9 11-9s10 3 11 9" fill="#94A3B8"/>
-              </svg>
+              {picture
+                ? <img src={picture} alt="프로필" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                : <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="12" r="5" fill="#94A3B8"/>
+                    <path d="M5 28c1-6 6-9 11-9s10 3 11 9" fill="#94A3B8"/>
+                  </svg>
+              }
             </div>
             <div style={{
               position: 'absolute', bottom: -2, right: -2,
@@ -55,7 +103,7 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: AR.ink, letterSpacing: '-0.01em' }}>able_user01</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: AR.ink, letterSpacing: '-0.01em' }}>{nickname}</div>
               <div style={{
                 background: AR.blue, color: '#fff',
                 fontSize: 10, fontWeight: 800,
@@ -63,7 +111,7 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
               }}>Lv.{level}</div>
             </div>
             <div style={{ fontSize: 12, color: AR.muted, marginTop: 4 }}>{getUserTypeLabel(userType)} 사용자</div>
-            <button style={{
+            <button onClick={openEditor} style={{
               marginTop: 6,
               background: '#fff', color: AR.ink,
               border: `1px solid ${AR.border}`,
@@ -109,53 +157,14 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
         {/* Activity */}
         <div style={{ marginTop: 18, fontSize: 14, fontWeight: 700, color: AR.ink, marginBottom: 8 }}>내 활동</div>
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${AR.border}`, padding: '4px 14px' }}>
-          <ActivityRow icon="report" label="제보한 정보"       value={`${24 + localReports.length}건`}/>
-          <ActivityRow icon="users"  label="도움 받은 사용자"  value="82명"/>
-          <ActivityRow icon="check"  label="채택된 제보"       value="22건"/>
-          <ActivityRow icon="point"  label="포인트"            value={`${points.toLocaleString()} P`} last/>
-        </div>
-
-        {/* Badges */}
-        <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: AR.ink }}>최근 뱃지</div>
-          <div style={{ fontSize: 12, color: AR.muted }}>더보기 ›</div>
-        </div>
-        <div style={{
-          marginTop: 10, background: '#fff',
-          borderRadius: 14, padding: 16,
-          border: `1px solid ${AR.border}`,
-          display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8,
-        }}>
-          <Badge color="#3B82F6" name="첫 제보"   lv="LV.1" type="shield"/>
-          <Badge color="#F59E0B" name="도움왕"    lv="LV.2" type="medal"/>
-          <Badge color="#EF4444" name="열정 활동" lv="LV.3" type="flame"/>
+          <ActivityRow icon="report" label="제보한 정보"      value={`${myReports.length}건`}/>
+          <ActivityRow icon="check"  label="채택된 제보"      value="22건"/>
+          <ActivityRow icon="point"  label="포인트"           value={`${points.toLocaleString()} P`} last/>
         </div>
 
         {/* Settings */}
         <div style={{ marginTop: 18, fontSize: 14, fontWeight: 700, color: AR.ink, marginBottom: 8 }}>설정</div>
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${AR.border}`, padding: '4px 14px' }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(2,1fr)',
-            gap: 8,
-            padding: '12px 0',
-            borderBottom: `1px solid ${AR.border}`,
-          }}>
-            {USER_TYPES.map(type => {
-              const active = type.id === userType;
-              return (
-                <button key={type.id} onClick={() => onUserTypeChange?.(type.id)} style={{
-                  minHeight: 38,
-                  borderRadius: 10,
-                  border: `1.5px solid ${active ? AR.blue : AR.border}`,
-                  background: active ? '#EFF4FF' : '#fff',
-                  color: active ? AR.blue : AR.ink,
-                  fontSize: 13,
-                  fontWeight: 700,
-                }}>{type.label}</button>
-              );
-            })}
-          </div>
           <SettingRow icon="bell"   label="알림 설정"/>
           <SettingRow icon="chat"   label="문의하기"/>
           <button onClick={onLogout} style={{ width: '100%', border: 'none', background: 'transparent', padding: 0, textAlign: 'left' }}>
@@ -163,6 +172,138 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
           </button>
         </div>
       </div>
+
+      {isEditing && (
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'rgba(15,23,42,0.38)',
+          display: 'flex',
+          alignItems: 'flex-end',
+          zIndex: 10,
+        }}>
+          <div style={{
+            width: '100%',
+            background: '#fff',
+            borderRadius: '20px 20px 0 0',
+            padding: '18px 18px 24px',
+            boxShadow: '0 -16px 40px rgba(15,23,42,0.18)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: AR.ink }}>프로필 수정</div>
+              <button onClick={() => setIsEditing(false)} style={{
+                width: 32, height: 32,
+                border: 'none',
+                borderRadius: 16,
+                background: AR.bg,
+                color: AR.muted,
+                fontSize: 20,
+                lineHeight: '32px',
+              }}>×</button>
+            </div>
+
+            <div style={{ marginTop: 18, display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{
+                width: 64, height: 64,
+                borderRadius: 32,
+                overflow: 'hidden',
+                background: 'linear-gradient(135deg, #DBEAFE, #EDE9FE)',
+                border: `1px solid ${AR.border}`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                {draftPicture
+                  ? <img src={draftPicture} alt="프로필 미리보기" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                  : <svg width="34" height="34" viewBox="0 0 32 32" fill="none">
+                      <circle cx="16" cy="12" r="5" fill="#94A3B8"/>
+                      <path d="M5 28c1-6 6-9 11-9s10 3 11 9" fill="#94A3B8"/>
+                    </svg>
+                }
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: 34,
+                  padding: '0 12px',
+                  borderRadius: 9,
+                  border: `1px solid ${AR.border}`,
+                  color: AR.ink,
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}>
+                  사진 선택
+                  <input type="file" accept="image/*" onChange={handlePictureFile} style={{ display: 'none' }}/>
+                </label>
+                {draftPicture && (
+                  <button onClick={() => setDraftPicture('')} style={{
+                    marginLeft: 8,
+                    height: 34,
+                    border: 'none',
+                    background: 'transparent',
+                    color: AR.red,
+                    fontSize: 13,
+                    fontWeight: 700,
+                  }}>삭제</button>
+                )}
+              </div>
+            </div>
+
+            <label style={{ display: 'block', marginTop: 18 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: AR.muted, marginBottom: 6 }}>이름</div>
+              <input
+                value={draftNickname}
+                onChange={event => setDraftNickname(event.target.value)}
+                maxLength={20}
+                style={{
+                  width: '100%',
+                  height: 44,
+                  borderRadius: 11,
+                  border: `1px solid ${AR.borderStrong}`,
+                  padding: '0 12px',
+                  fontSize: 15,
+                  fontWeight: 600,
+                  color: AR.ink,
+                  fontFamily: AR.font,
+                  boxSizing: 'border-box',
+                }}
+              />
+            </label>
+
+            {editError && (
+              <div style={{ marginTop: 10, color: AR.red, fontSize: 12, fontWeight: 600 }}>{editError}</div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+              <button onClick={() => setIsEditing(false)} style={{
+                flex: 1,
+                height: 46,
+                borderRadius: 12,
+                border: `1px solid ${AR.border}`,
+                background: '#fff',
+                color: AR.ink,
+                fontSize: 15,
+                fontWeight: 700,
+                fontFamily: AR.font,
+              }}>취소</button>
+              <button onClick={saveProfile} disabled={isSaving} style={{
+                flex: 1,
+                height: 46,
+                borderRadius: 12,
+                border: 'none',
+                background: isSaving ? AR.borderStrong : AR.blue,
+                color: '#fff',
+                fontSize: 15,
+                fontWeight: 800,
+                fontFamily: AR.font,
+              }}>{isSaving ? '저장 중' : '저장'}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <TabBar active="profile" onNavigate={onNavigate}/>
     </div>
@@ -195,7 +336,6 @@ function ActivityRow({ icon, label, value, last }) {
 
 function SettingRow({ icon, label, value, last, danger }) {
   const icons = {
-    user:   <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="9" r="3.5" stroke="currentColor" strokeWidth="2"/><path d="M5 20c.7-4 3.5-6 7-6s6.3 2 7 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>,
     bell:   <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 7 3 9H3c0-2 3-2 3-9z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M10 19a2 2 0 0 0 4 0" stroke="currentColor" strokeWidth="2"/></svg>,
     chat:   <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 5h16v12H8l-4 4V5z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>,
     logout: <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M14 4h5v16h-5M9 8l-4 4 4 4M5 12h11" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>,
@@ -216,35 +356,6 @@ function SettingRow({ icon, label, value, last, danger }) {
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
         <path d="M9 6l6 6-6 6" stroke={AR.muted} strokeWidth="2" strokeLinecap="round"/>
       </svg>
-    </div>
-  );
-}
-
-function Badge({ color, name, lv, type }) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
-      <div style={{
-        width: 56, height: 56, borderRadius: 28,
-        background: `linear-gradient(135deg, ${color}, ${color}cc)`,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: `0 6px 16px ${color}55`,
-      }}>
-        {type === 'shield' && <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-          <path d="M12 2l8 3v7c0 5-4 8-8 10-4-2-8-5-8-10V5l8-3z" fill="#fff" fillOpacity="0.95"/>
-          <path d="M9 12l2 2 4-4" stroke={color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>}
-        {type === 'medal' && <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-          <circle cx="12" cy="13" r="6" fill="#fff" fillOpacity="0.95"/>
-          <path d="M8 4l4 6 4-6" stroke="#fff" strokeWidth="2.2" strokeLinecap="round"/>
-          <path d="M12 11l1.2 2.4 2.6.4-1.9 1.8.5 2.6L12 17l-2.4 1.2.5-2.6-1.9-1.8 2.6-.4L12 11z" fill={color}/>
-        </svg>}
-        {type === 'flame' && <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
-          <path d="M12 3c0 4-5 5-5 10a5 5 0 0 0 10 0c0-3-2-3-2-6 0 0-3 1-3-4z" fill="#fff" fillOpacity="0.95"/>
-          <path d="M12 11c0 2-2 2-2 4a2 2 0 0 0 4 0c0-2-2-2-2-4z" fill={color}/>
-        </svg>}
-      </div>
-      <div style={{ fontSize: 12, fontWeight: 700, color: AR.ink, marginTop: 2 }}>{name}</div>
-      <div style={{ fontSize: 10, color: AR.muted, fontWeight: 600, letterSpacing: '0.04em' }}>{lv}</div>
     </div>
   );
 }

@@ -1,16 +1,43 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AR } from './design';
 import { LoginScreen } from './screens/LoginScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { RouteScreen } from './screens/RouteScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { AdminDashboard } from './admin/AdminDashboard';
+import { DEMO_REPORTS, PLACES } from './data/accessibility';
+import {
+  ensureLocalProfile,
+  fetchPlaces,
+  fetchProfile,
+  fetchReports,
+  getKakaoProfileId,
+  getLocalUserId,
+  setLocalUserId,
+  updateProfile,
+  updateUserType,
+} from './lib/accessibility';
+import { exchangeKakaoCode, startKakaoLogin } from './lib/kakaoAuth';
 
-const ROUTES = ['login', 'home', 'route', 'report', 'profile'];
+const ROUTES = ['login', 'home', 'route', 'report', 'profile', 'admin'];
 
 function getInitialScreen() {
-  const route = window.location.pathname.replace('/', '') || 'home';
-  return ROUTES.includes(route) ? route : 'home';
+  const route = window.location.pathname.split('/').filter(Boolean)[0] || 'login';
+  return ROUTES.includes(route) ? route : 'login';
+}
+
+function getStoredKakaoUser() {
+  try {
+    return JSON.parse(localStorage.getItem('ableRouteKakaoUser') || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function getInitialUserId() {
+  const kakaoProfileId = getKakaoProfileId(getStoredKakaoUser());
+  return kakaoProfileId || getLocalUserId();
 }
 
 export default function App() {
@@ -21,13 +48,107 @@ export default function App() {
     from: localStorage.getItem('ableRouteRouteFrom') || '강남역',
     to: localStorage.getItem('ableRouteRouteTo') || '코엑스',
   }));
+  const [userId, setUserId] = useState(getInitialUserId);
+  const [profile, setProfile] = useState(null);
+  const [places, setPlaces] = useState(PLACES);
+  const [reports, setReports] = useState(DEMO_REPORTS);
+  const [dataStatus, setDataStatus] = useState('loading');
+  const [loginError, setLoginError] = useState('');
   const [, setHistory] = useState([]);
+  const kakaoLoginCalled = useRef(false); // ✅ 중복 호출 방지
 
   useEffect(() => {
     const onPopState = () => setScreen(getInitialScreen());
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+
+    if (!code) return;
+    if (kakaoLoginCalled.current) return; // ✅ 이미 호출됐으면 무시
+    kakaoLoginCalled.current = true; // ✅ 호출 표시
+
+    async function completeKakaoLogin() {
+      try {
+        const kakaoUser = await exchangeKakaoCode(code);
+
+        localStorage.setItem('ableRouteLoggedIn', 'true');
+        localStorage.setItem('ableRouteLoginMethod', 'kakao');
+        localStorage.setItem('ableRouteKakaoUser', JSON.stringify(kakaoUser));
+        const nextUserId = getKakaoProfileId(kakaoUser) || getLocalUserId();
+        setLocalUserId(nextUserId);
+        setUserId(nextUserId);
+        const nextProfile = await ensureLocalProfile(userType, {
+          userId: nextUserId,
+          nickname: kakaoUser.name || 'able_user01',
+        });
+
+        setProfile({ ...nextProfile, picture: kakaoUser.picture });
+
+        setLoggedIn(true);
+        setScreen('home');
+        setLoginError('');
+        window.history.replaceState({}, '', '/home');
+      } catch (error) {
+        setLoggedIn(false);
+        setScreen('login');
+        setLoginError(error.message);
+        window.history.replaceState({}, '', '/login');
+      }
+    }
+
+    completeKakaoLogin();
+  }, [userType]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialData() {
+      if (!loggedIn) {
+        setDataStatus('ready');
+        return;
+      }
+
+      setDataStatus('loading');
+      const kakaoUser = getStoredKakaoUser();
+      const [nextProfile, nextPlaces, nextReports] = await Promise.all([
+        ensureLocalProfile(userType, {
+          userId,
+          nickname: kakaoUser?.name || 'able_user01',
+        }),
+        fetchPlaces(),
+        fetchReports(),
+      ]);
+
+      if (cancelled) return;
+      setProfile(nextProfile);
+      setUserTypeState(nextProfile?.user_type || userType);
+      setPlaces(nextPlaces);
+      setReports(nextReports);
+      setDataStatus('ready');
+    }
+
+    loadInitialData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedIn, userId, userType]);
+
+  async function refreshData(nextUserId = userId, nextUserType = userType) {
+    const [nextProfile, nextPlaces, nextReports] = await Promise.all([
+      fetchProfile(nextUserId, nextUserType),
+      fetchPlaces(),
+      fetchReports(),
+    ]);
+    setProfile(nextProfile);
+    setPlaces(nextPlaces);
+    setReports(nextReports);
+    return { profile: nextProfile, places: nextPlaces, reports: nextReports };
+  }
 
   function navigate(to) {
     if (!ROUTES.includes(to)) return;
@@ -47,21 +168,66 @@ export default function App() {
     });
   }
 
-  function setUserType(nextType) {
+  async function setUserType(nextType) {
     setUserTypeState(nextType);
     localStorage.setItem('ableRouteUserType', nextType);
+    const nextProfile = await updateUserType(nextType, userId);
+    setProfile(nextProfile);
+  }
+
+  async function handleProfileUpdate(profileInput) {
+    const nextProfile = await updateProfile(userId, {
+      ...profileInput,
+      user_type: userType,
+    });
+    setProfile(nextProfile);
+
+    const kakaoUser = getStoredKakaoUser();
+    if (kakaoUser) {
+      localStorage.setItem('ableRouteKakaoUser', JSON.stringify({
+        ...kakaoUser,
+        name: nextProfile.nickname,
+        picture: nextProfile.picture,
+      }));
+    }
+
+    return nextProfile;
   }
 
   function handleLogin(method = 'demo') {
+    if (method === 'kakao') {
+      try {
+        setLoginError('');
+        startKakaoLogin();
+      } catch (error) {
+        setLoginError(error.message);
+      }
+      return;
+    }
+
+    if (method === 'admin') {
+      localStorage.setItem('ableRouteAdminLoggedIn', 'true');
+      setLoginError('');
+      setScreen('admin');
+      window.history.pushState({}, '', '/admin');
+      return;
+    }
+
     localStorage.setItem('ableRouteLoggedIn', 'true');
     localStorage.setItem('ableRouteLoginMethod', method);
+    const nextUserId = getLocalUserId();
+    setUserId(nextUserId);
     setLoggedIn(true);
     navigate('home');
   }
 
   function handleLogout() {
     localStorage.removeItem('ableRouteLoggedIn');
+    localStorage.removeItem('ableRouteLoginMethod');
+    localStorage.removeItem('ableRouteKakaoUser'); // ✅ 추가
+    localStorage.removeItem('ableRouteAdminLoggedIn');
     setLoggedIn(false);
+    setProfile(null); // ✅ 추가
     navigate('login');
   }
 
@@ -74,15 +240,20 @@ export default function App() {
     navigate('route');
   }
 
-  const screenEl = !loggedIn
-    ? <LoginScreen onLogin={handleLogin}/>
+  // Admin dashboard rendered full-screen outside the phone shell
+  if (screen === 'admin') {
+    return <AdminDashboard/>;
+  }
+
+  const screenEl = !loggedIn || screen === 'login'
+    ? <LoginScreen onLogin={handleLogin} loginError={loginError}/>
     : (() => {
         switch (screen) {
-          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
-          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} routeQuery={routeQuery}/>;
-          case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType}/>;
-          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} onLogout={handleLogout}/>;
-          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
+          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
+          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} places={places} reports={reports} routeQuery={routeQuery}/>;
+          case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType} userId={userId} places={places} reports={reports} onDataChange={refreshData}/>;
+          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onLogout={handleLogout} onProfileUpdate={handleProfileUpdate} profile={profile} reports={reports} userId={userId}/>;
+          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
         }
       })();
 
