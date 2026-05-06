@@ -21,6 +21,38 @@ REPORT_CATEGORY_LABELS = {
     "slope": "급경사",
     "construction": "공사 중",
     "blocked": "통행 불가",
+    "other": "기타",
+}
+
+CLASSIFICATION_CATEGORIES = [
+    "엘리베이터 고장",
+    "계단/턱",
+    "급경사",
+    "공사 중",
+    "통행 불가",
+    "안내 표지 부족",
+    "점자블록 문제",
+    "장애물 적치",
+    "보도 파손",
+    "조명 부족",
+    "불법 주정차",
+    "임시 통행로 문제",
+    "기타",
+]
+
+CATEGORY_AGENCY_RULES = {
+    "엘리베이터 고장": "서울교통공사",
+    "계단/턱": "서울교통공사",
+    "급경사": "도로관리사업소",
+    "공사 중": "도로관리사업소",
+    "통행 불가": "도로관리사업소",
+    "안내 표지 부족": "서울교통공사",
+    "점자블록 문제": "도로관리사업소",
+    "장애물 적치": "구청",
+    "보도 파손": "도로관리사업소",
+    "조명 부족": "구청",
+    "불법 주정차": "구청",
+    "임시 통행로 문제": "도로관리사업소",
 }
 
 
@@ -28,21 +60,44 @@ def get_report_category(issue_type: str) -> str:
     return REPORT_CATEGORY_LABELS.get(issue_type, "기타")
 
 
-def get_report_severity(issue_type: str) -> str:
+def infer_other_category(description: str) -> str:
+    text = description or ""
+    if any(word in text for word in ["점자", "블록", "유도블록"]):
+        return "점자블록 문제"
+    if any(word in text for word in ["입간판", "적치", "물건", "장애물", "방치", "가판"]):
+        return "장애물 적치"
+    if any(word in text for word in ["파손", "깨짐", "꺼짐", "구멍", "보도블록"]):
+        return "보도 파손"
+    if any(word in text for word in ["표지", "안내", "표시", "안내판", "유도"]):
+        return "안내 표지 부족"
+    if any(word in text for word in ["조명", "어두", "가로등", "야간"]):
+        return "조명 부족"
+    if any(word in text for word in ["주차", "불법주차", "차량", "오토바이", "킥보드"]):
+        return "불법 주정차"
+    if any(word in text for word in ["임시", "우회", "통행로", "가설"]):
+        return "임시 통행로 문제"
+    if any(word in text for word in ["막힘", "막혀", "못 지나", "통행 불가", "진입 불가"]):
+        return "통행 불가"
+    return "기타"
+
+
+def get_report_severity(issue_type: str, category: str = "", description: str = "") -> str:
+    text = description or ""
     if issue_type in {"elevator_broken", "stairs", "curb", "blocked"}:
         return "high"
+    if category in {"통행 불가", "보도 파손", "점자블록 문제"}:
+        return "high"
     if issue_type in {"steep_slope", "slope", "construction"}:
+        return "medium"
+    if category in {"장애물 적치", "불법 주정차", "임시 통행로 문제", "안내 표지 부족", "조명 부족"}:
+        return "medium"
+    if any(word in text for word in ["위험", "넘어", "사고", "다침", "불가", "막힘"]):
         return "medium"
     return "low"
 
 
-def get_responsible_agency(issue_type: str, place: dict) -> str:
-    station_name = place.get("station_name") or ""
-    place_text = f"{place.get('name', '')} {station_name}"
-    if issue_type in {"elevator_broken", "stairs", "blocked"} and station_name:
-        return "서울교통공사"
-    if issue_type in {"curb", "steep_slope", "slope", "construction"}:
-        return "도로관리사업소"
+def get_region_agency(place: dict) -> str:
+    place_text = f"{place.get('name', '')} {place.get('station_name', '')}"
     if "강남" in place_text or "삼성" in place_text or "코엑스" in place_text:
         return "강남구청"
     if "송파" in place_text or "잠실" in place_text:
@@ -50,6 +105,20 @@ def get_responsible_agency(issue_type: str, place: dict) -> str:
     if "서초" in place_text or "교대" in place_text:
         return "서초구청"
     return "기타 기관"
+
+
+def get_responsible_agency(issue_type: str, place: dict, category: str = "") -> str:
+    station_name = place.get("station_name") or ""
+    if issue_type in {"elevator_broken", "stairs", "blocked"} and station_name:
+        return "서울교통공사"
+    if issue_type in {"curb", "steep_slope", "slope", "construction"}:
+        return "도로관리사업소"
+    agency_rule = CATEGORY_AGENCY_RULES.get(category)
+    if agency_rule == "구청":
+        return get_region_agency(place)
+    if agency_rule:
+        return agency_rule
+    return get_region_agency(place)
 
 
 def get_priority_score(issue_type: str, severity: str, has_image: bool) -> int:
@@ -63,11 +132,11 @@ def get_priority_score(issue_type: str, severity: str, has_image: bool) -> int:
 
 def build_rule_based_classification(report: dict, place: dict, user_type: str) -> dict:
     issue_type = report.get("issue_type", "")
-    category = get_report_category(issue_type)
-    severity = get_report_severity(issue_type)
-    agency = get_responsible_agency(issue_type, place)
+    description = report.get("description") or ""
+    category = infer_other_category(description) if issue_type == "other" else get_report_category(issue_type)
+    severity = get_report_severity(issue_type, category, description)
+    agency = get_responsible_agency(issue_type, place, category)
     place_name = place.get("name") or "선택 장소"
-    description = report.get("description") or category
     has_image = bool(report.get("image_url"))
 
     return {
@@ -166,18 +235,25 @@ JSON 형식:
 
 def build_classification_prompt(report: dict, place: dict, user_type: str) -> str:
     label = USER_TYPE_LABELS.get(user_type, user_type)
+    categories = " | ".join(CLASSIFICATION_CATEGORIES)
     return f"""
 다음 교통약자 접근성 제보를 기관용 민원 데이터로 분류해줘.
 반드시 JSON만 반환해.
 
 JSON 형식:
 {{
-  "ai_category": "엘리베이터 고장 | 계단/턱 | 급경사 | 공사 중 | 통행 불가 | 기타 중 하나",
+  "ai_category": "{categories} 중 하나",
   "ai_severity": "high | medium | low 중 하나",
   "ai_summary": "기관 담당자가 한눈에 볼 수 있는 한 줄 요약",
   "responsible_agency": "서울교통공사 | 도로관리사업소 | 구청명 | 기타 기관 중 하나",
   "priority_score": 0부터 100 사이 정수
 }}
+
+분류 기준:
+- 지하철역 내부/출구의 엘리베이터, 계단, 안내 표지는 주로 서울교통공사
+- 보도 파손, 급경사, 공사 중, 임시 통행로는 주로 도로관리사업소
+- 불법 주정차, 장애물 적치, 조명 부족은 주로 해당 구청
+- 사용자가 기타를 선택했더라도 상세 설명을 보고 가장 가까운 세부 카테고리로 분류
 
 사용자 유형: {label}
 장소:
