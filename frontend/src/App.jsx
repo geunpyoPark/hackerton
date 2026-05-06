@@ -44,6 +44,10 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('ableRouteLoggedIn') === 'true');
   const [screen, setScreen] = useState(getInitialScreen);
   const [userType, setUserTypeState] = useState(() => localStorage.getItem('ableRouteUserType') || 'wheelchair');
+  const [routeQuery, setRouteQuery] = useState(() => ({
+    from: localStorage.getItem('ableRouteRouteFrom') || '강남역',
+    to: localStorage.getItem('ableRouteRouteTo') || '코엑스',
+  }));
   const [userId, setUserId] = useState(getInitialUserId);
   const [profile, setProfile] = useState(null);
   const [places, setPlaces] = useState(PLACES);
@@ -227,6 +231,15 @@ export default function App() {
     navigate('login');
   }
 
+  function handleRouteSearch(nextRoute) {
+    const from = nextRoute.from.trim() || '강남역';
+    const to = nextRoute.to.trim() || '코엑스';
+    localStorage.setItem('ableRouteRouteFrom', from);
+    localStorage.setItem('ableRouteRouteTo', to);
+    setRouteQuery({ from, to });
+    navigate('route');
+  }
+
   // Admin dashboard rendered full-screen outside the phone shell
   if (screen === 'admin') {
     return <AdminDashboard/>;
@@ -236,11 +249,11 @@ export default function App() {
     ? <LoginScreen onLogin={handleLogin} loginError={loginError}/>
     : (() => {
         switch (screen) {
-          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;
-          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} places={places} reports={reports}/>;
+          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
+          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} places={places} reports={reports} routeQuery={routeQuery}/>;
           case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType} userId={userId} places={places} reports={reports} onDataChange={refreshData}/>;
           case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onLogout={handleLogout} onProfileUpdate={handleProfileUpdate} profile={profile} reports={reports} userId={userId}/>;
-          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;
+          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
         }
       })();
 
