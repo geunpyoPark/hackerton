@@ -5,6 +5,15 @@ import { HomeScreen } from './screens/HomeScreen';
 import { RouteScreen } from './screens/RouteScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { DEMO_REPORTS, PLACES } from './data/accessibility';
+import {
+  ensureLocalProfile,
+  fetchPlaces,
+  fetchProfile,
+  fetchReports,
+  getLocalUserId,
+  updateUserType,
+} from './lib/accessibility';
 
 const ROUTES = ['login', 'home', 'route', 'report', 'profile'];
 
@@ -17,6 +26,11 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('ableRouteLoggedIn') === 'true');
   const [screen, setScreen] = useState(getInitialScreen);
   const [userType, setUserTypeState] = useState(() => localStorage.getItem('ableRouteUserType') || 'wheelchair');
+  const [userId] = useState(getLocalUserId);
+  const [profile, setProfile] = useState(null);
+  const [places, setPlaces] = useState(PLACES);
+  const [reports, setReports] = useState(DEMO_REPORTS);
+  const [dataStatus, setDataStatus] = useState('loading');
   const [, setHistory] = useState([]);
 
   useEffect(() => {
@@ -24,6 +38,44 @@ export default function App() {
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitialData() {
+      setDataStatus('loading');
+      const [nextProfile, nextPlaces, nextReports] = await Promise.all([
+        ensureLocalProfile(userType),
+        fetchPlaces(),
+        fetchReports(),
+      ]);
+
+      if (cancelled) return;
+      setProfile(nextProfile);
+      setUserTypeState(nextProfile?.user_type || userType);
+      setPlaces(nextPlaces);
+      setReports(nextReports);
+      setDataStatus('ready');
+    }
+
+    loadInitialData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userType]);
+
+  async function refreshData() {
+    const [nextProfile, nextPlaces, nextReports] = await Promise.all([
+      fetchProfile(userId, userType),
+      fetchPlaces(),
+      fetchReports(),
+    ]);
+    setProfile(nextProfile);
+    setPlaces(nextPlaces);
+    setReports(nextReports);
+    return { profile: nextProfile, places: nextPlaces, reports: nextReports };
+  }
 
   function navigate(to) {
     if (!ROUTES.includes(to)) return;
@@ -43,9 +95,11 @@ export default function App() {
     });
   }
 
-  function setUserType(nextType) {
+  async function setUserType(nextType) {
     setUserTypeState(nextType);
     localStorage.setItem('ableRouteUserType', nextType);
+    const nextProfile = await updateUserType(nextType, userId);
+    setProfile(nextProfile);
   }
 
   function handleLogin(method = 'demo') {
@@ -65,11 +119,11 @@ export default function App() {
     ? <LoginScreen onLogin={handleLogin}/>
     : (() => {
         switch (screen) {
-          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType}/>;
-          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType}/>;
-          case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType}/>;
-          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} onLogout={handleLogout}/>;
-          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType}/>;
+          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;
+          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} places={places} reports={reports}/>;
+          case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType} userId={userId} places={places} reports={reports} onDataChange={refreshData}/>;
+          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} onLogout={handleLogout} profile={profile} reports={reports} userId={userId}/>;
+          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;
         }
       })();
 
