@@ -4,6 +4,7 @@ import { FakeMap } from './FakeMap';
 
 const KAKAO_MAP_APP_KEY = import.meta.env.VITE_KAKAO_MAP_APP_KEY || import.meta.env.VITE_KAKAO_MAP_KEY;
 let kakaoMapLoader;
+const EMPTY_ROUTE_PATH = [];
 
 const DEFAULT_ROUTE_POINTS = [
   { id: 'start', name: '강남역', lat: 37.497952, lng: 127.027619, risk: 'green' },
@@ -16,6 +17,18 @@ const markerColor = {
   green: AR.green,
   yellow: AR.yellow,
   red: AR.red,
+};
+
+const facilityStyle = {
+  elevator: { label: 'EV', color: AR.blue },
+  escalator: { label: 'ES', color: '#F97316' },
+  restroom: { label: 'WC', color: '#7C3AED' },
+  charger: { label: 'CH', color: AR.green },
+  lift: { label: 'LF', color: '#0891B2' },
+  movingWalk: { label: 'MW', color: '#0EA5E9' },
+  safePlatform: { label: 'SP', color: '#F59E0B' },
+  signLanguagePhone: { label: 'SL', color: '#DB2777' },
+  helper: { label: 'HP', color: '#475569' },
 };
 
 function loadKakaoMapSdk() {
@@ -61,9 +74,10 @@ function loadKakaoMapSdk() {
   return kakaoMapLoader;
 }
 
-export function KakaoMap({ places = [], center, height = '100%' }) {
+export function KakaoMap({ places = [], routePath = EMPTY_ROUTE_PATH, center, height = '100%', disableFallbackRoute = false }) {
   const mapNodeRef = useRef(null);
   const mapRef = useRef(null);
+  const centerRef = useRef(null);
   const [loadState, setLoadState] = useState(KAKAO_MAP_APP_KEY ? 'loading' : 'missing-key');
   const currentOrigin = window.location.origin;
   const mapPlaces = useMemo(() => (
@@ -78,29 +92,35 @@ export function KakaoMap({ places = [], center, height = '100%' }) {
     let canceled = false;
 
     loadKakaoMapSdk()
-      .then((kakao) => {
+      .then(async (kakao) => {
         if (canceled || !mapNodeRef.current) return;
 
         const { maps } = kakao;
-        const bounds = new maps.LatLngBounds();
-        const target = center || mapPlaces[0] || DEFAULT_ROUTE_POINTS[0];
-        const routePath = mapPlaces
-          .filter((place) => typeof place.lat === 'number' && typeof place.lng === 'number')
-          .map((place) => {
-            const latLng = new maps.LatLng(place.lat, place.lng);
-            bounds.extend(latLng);
-            return latLng;
-          });
+        const resolvedPlaces = await resolvePlaceLocations(kakao, mapPlaces);
+        if (canceled || !mapNodeRef.current) return;
+
+        const validPlaces = resolvedPlaces.filter((place) => (
+          typeof place.lat === 'number' && typeof place.lng === 'number'
+        ));
+        const target = center || getRouteCenter(validPlaces) || DEFAULT_ROUTE_POINTS[0];
+        const targetCenter = new maps.LatLng(target.lat, target.lng);
 
         const map = new maps.Map(mapNodeRef.current, {
-          center: new maps.LatLng(target.lat, target.lng),
-          level: 4,
+          center: targetCenter,
+          level: 6,
         });
 
-        if (routePath.length > 1) {
+        const routePathOnly = routePath.length > 1
+          ? routePath
+          : disableFallbackRoute
+          ? []
+          : validPlaces
+            .filter((place) => !place.type)
+            .map((place) => ({ lat: place.lat, lng: place.lng }));
+        if (routePathOnly.length > 1) {
           new maps.Polyline({
             map,
-            path: routePath,
+            path: routePathOnly.map((point) => new maps.LatLng(point.lat, point.lng)),
             strokeWeight: 6,
             strokeColor: AR.blue,
             strokeOpacity: 0.9,
@@ -108,37 +128,36 @@ export function KakaoMap({ places = [], center, height = '100%' }) {
           });
         }
 
-        mapPlaces.forEach((place, index) => {
-          if (typeof place.lat !== 'number' || typeof place.lng !== 'number') return;
-
+        validPlaces.forEach((place, index) => {
           const position = new maps.LatLng(place.lat, place.lng);
-          new maps.Marker({
-            map,
-            position,
-            title: place.name,
-          });
 
-          new maps.CustomOverlay({
-            map,
-            position,
-            yAnchor: 2.35,
-            content: buildOverlayContent(place, index, mapPlaces.length),
-          });
+          if (!place.type && !place.routeVia) {
+            new maps.Marker({
+              map,
+              position,
+              title: place.name,
+            });
+          }
+
+          if (!place.routeVia) {
+            new maps.CustomOverlay({
+              map,
+              position,
+              yAnchor: place.type ? 0.9 : 2.35,
+              content: buildOverlayContent(place, index, validPlaces.length),
+            });
+          }
         });
 
-        if (routePath.length > 0) {
-          map.setBounds(bounds, 24, 24, 24, 24);
-        }
-
         mapRef.current = map;
+        centerRef.current = targetCenter;
         setLoadState('ready');
 
-        window.setTimeout(() => {
+        requestAnimationFrame(() => {
           map.relayout();
-          if (routePath.length > 0) {
-            map.setBounds(bounds, 24, 24, 24, 24);
-          }
-        }, 0);
+          map.setCenter(targetCenter);
+          map.setLevel(6);
+        });
       })
       .catch((error) => {
         console.error('Kakao map load failed:', error);
@@ -148,8 +167,22 @@ export function KakaoMap({ places = [], center, height = '100%' }) {
     return () => {
       canceled = true;
       mapRef.current = null;
+      centerRef.current = null;
     };
-  }, [center, mapPlaces]);
+  }, [center, disableFallbackRoute, mapPlaces, routePath]);
+
+  useEffect(() => {
+    if (!mapNodeRef.current || !window.ResizeObserver) return undefined;
+
+    const observer = new ResizeObserver(() => {
+      if (!mapRef.current || !centerRef.current) return;
+      mapRef.current.relayout();
+      mapRef.current.setCenter(centerRef.current);
+    });
+
+    observer.observe(mapNodeRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <div style={{ position: 'relative', width: '100%', height, background: '#E8EEF4' }}>
@@ -167,15 +200,84 @@ export function KakaoMap({ places = [], center, height = '100%' }) {
   );
 }
 
+async function resolvePlaceLocations(kakao, places) {
+  const placeSearch = kakao.maps.services ? new kakao.maps.services.Places() : null;
+
+  return Promise.all(places.map(async (place) => {
+    if (typeof place.lat === 'number' && typeof place.lng === 'number') {
+      return place;
+    }
+
+    if (!placeSearch || !place.locationQuery) {
+      return place;
+    }
+
+    const coords = await searchPlace(placeSearch, place.locationQuery);
+    if (!coords) {
+      return place;
+    }
+
+    return {
+      ...place,
+      lat: coords.lat,
+      lng: coords.lng,
+    };
+  }));
+}
+
+function searchPlace(placeSearch, query) {
+  return new Promise((resolve) => {
+    placeSearch.keywordSearch(query, (results, status) => {
+      if (status !== window.kakao.maps.services.Status.OK || !results?.[0]) {
+        resolve(null);
+        return;
+      }
+
+      resolve({
+        lat: Number(results[0].y),
+        lng: Number(results[0].x),
+      });
+    });
+  });
+}
+
+function getRouteCenter(places) {
+  if (places.length === 0) return null;
+
+  const totals = places.reduce((acc, place) => ({
+    lat: acc.lat + place.lat,
+    lng: acc.lng + place.lng,
+  }), { lat: 0, lng: 0 });
+
+  return {
+    lat: totals.lat / places.length,
+    lng: totals.lng / places.length,
+  };
+}
+
 function buildOverlayContent(place, index, total) {
-  const isStart = index === 0;
-  const isEnd = index === total - 1;
-  const label = isStart ? '출발' : isEnd ? '도착' : place.name;
-  const background = isStart ? AR.blue : isEnd ? AR.red : '#fff';
-  const color = isStart || isEnd ? '#fff' : AR.ink;
-  const border = isStart || isEnd ? 'none' : `1px solid ${AR.border}`;
+  const isFacility = Boolean(place.type);
+  const isStart = place.routeRole === 'start' || (!isFacility && index === 0);
+  const isEnd = place.routeRole === 'end' || (!isFacility && index === total - 1);
+  const style = facilityStyle[place.type];
+  const label = isFacility ? style?.label || 'F' : isStart ? '출발' : isEnd ? '도착' : place.name;
+  const background = isFacility ? style?.color || AR.blue : isStart ? AR.blue : isEnd ? AR.red : '#fff';
+  const color = isFacility || isStart || isEnd ? '#fff' : AR.ink;
+  const border = isFacility || isStart || isEnd ? 'none' : `1px solid ${AR.border}`;
+
+  if (isFacility) {
+    return `<div title="${escapeHtml(place.name)}" style="width:22px;height:22px;border-radius:50%;background:${background};color:${color};border:2px solid #fff;font-size:9px;font-weight:800;line-height:22px;text-align:center;box-shadow:0 2px 7px rgba(15,23,42,.24)">${label}</div>`;
+  }
 
   return `<div style="padding:4px 8px;border-radius:6px;background:${background};color:${color};border:${border};font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(15,23,42,.18)">${label}</div>`;
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
 }
 
 function FallbackMarkers({ places }) {
@@ -194,7 +296,7 @@ function FallbackMarkers({ places }) {
             width: 18,
             height: 18,
             borderRadius: 9,
-            background: markerColor[place.risk] || AR.blue,
+            background: facilityStyle[place.type]?.color || markerColor[place.risk] || AR.blue,
             border: '2px solid #fff',
             boxShadow: '0 2px 8px rgba(0,0,0,.18)',
           }} />

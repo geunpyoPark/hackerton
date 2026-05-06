@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { AR } from '../design';
 import { WheelchairIcon, StrollerIcon, ElderlyIcon, CrutchIcon, AppLogo } from '../components/Icons';
 import { TabBar } from '../components/TabBar';
@@ -11,7 +12,9 @@ const USER_TYPES = [
   { id: 'crutch',     label: '목발',   Icon: CrutchIcon },
 ];
 
-export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange }) {
+export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange, routeQuery, onRouteSearch }) {
+  const [from, setFrom] = useState(routeQuery?.from || '강남역');
+  const [to, setTo] = useState(routeQuery?.to || '코엑스');
   const activeType = USER_TYPES.find(t => t.id === userType);
   const reports = getAllReports();
   const recentReports = reports.slice(0, 3);
@@ -98,17 +101,20 @@ export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChan
               </svg>
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <input aria-label="출발지" defaultValue="강남역" style={{
+              <input aria-label="출발지" value={from} onChange={(event) => setFrom(event.target.value)} style={{
                 padding: '11px 12px', borderRadius: 10, background: AR.bg,
                 fontSize: 14, color: AR.ink, border: 'none', outline: 'none',
               }}/>
               <div style={{ height: 8 }}/>
-              <input aria-label="도착지" defaultValue="코엑스" style={{
+              <input aria-label="도착지" value={to} onChange={(event) => setTo(event.target.value)} style={{
                 padding: '11px 12px', borderRadius: 10, background: AR.bg,
                 fontSize: 14, color: AR.ink, border: 'none', outline: 'none',
               }}/>
             </div>
-            <button style={{
+            <button onClick={() => {
+              setFrom(to);
+              setTo(from);
+            }} style={{
               width: 36, alignSelf: 'center',
               background: 'transparent', border: 'none',
               display: 'flex', justifyContent: 'center',
@@ -118,7 +124,13 @@ export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChan
               </svg>
             </button>
           </div>
-          <button onClick={() => onNavigate?.('route')} style={{
+          <button onClick={() => {
+            if (onRouteSearch) {
+              onRouteSearch({ from, to });
+              return;
+            }
+            onNavigate?.('route');
+          }} style={{
             marginTop: 14, width: '100%', height: 50,
             background: AR.blue, color: '#fff',
             border: 'none', borderRadius: 12,

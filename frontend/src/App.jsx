@@ -17,6 +17,10 @@ export default function App() {
   const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('ableRouteLoggedIn') === 'true');
   const [screen, setScreen] = useState(getInitialScreen);
   const [userType, setUserTypeState] = useState(() => localStorage.getItem('ableRouteUserType') || 'wheelchair');
+  const [routeQuery, setRouteQuery] = useState(() => ({
+    from: localStorage.getItem('ableRouteRouteFrom') || '강남역',
+    to: localStorage.getItem('ableRouteRouteTo') || '코엑스',
+  }));
   const [, setHistory] = useState([]);
 
   useEffect(() => {
@@ -61,15 +65,24 @@ export default function App() {
     navigate('login');
   }
 
+  function handleRouteSearch(nextRoute) {
+    const from = nextRoute.from.trim() || '강남역';
+    const to = nextRoute.to.trim() || '코엑스';
+    localStorage.setItem('ableRouteRouteFrom', from);
+    localStorage.setItem('ableRouteRouteTo', to);
+    setRouteQuery({ from, to });
+    navigate('route');
+  }
+
   const screenEl = !loggedIn
     ? <LoginScreen onLogin={handleLogin}/>
     : (() => {
         switch (screen) {
-          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType}/>;
-          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType}/>;
+          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
+          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} routeQuery={routeQuery}/>;
           case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType}/>;
           case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} onLogout={handleLogout}/>;
-          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType}/>;
+          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} routeQuery={routeQuery} onRouteSearch={handleRouteSearch}/>;
         }
       })();
 
