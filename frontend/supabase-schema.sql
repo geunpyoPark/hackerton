@@ -46,8 +46,20 @@ create table if not exists reports (
   lng double precision,
   status text not null default 'active',
   verified_count integer not null default 0,
+  ai_category text,
+  ai_severity text check (ai_severity in ('high', 'medium', 'low') or ai_severity is null),
+  ai_summary text,
+  responsible_agency text,
+  priority_score integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table reports add column if not exists ai_category text;
+alter table reports add column if not exists ai_severity text
+  check (ai_severity in ('high', 'medium', 'low') or ai_severity is null);
+alter table reports add column if not exists ai_summary text;
+alter table reports add column if not exists responsible_agency text;
+alter table reports add column if not exists priority_score integer not null default 0;
 
 alter table profiles enable row level security;
 alter table places enable row level security;

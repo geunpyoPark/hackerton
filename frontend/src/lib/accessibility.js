@@ -175,10 +175,18 @@ export async function createReport(reportInput) {
     status: 'active',
     verified_count: 0,
   };
+  const classifiedReport = {
+    ...report,
+    ai_category: reportInput.ai_category || null,
+    ai_severity: reportInput.ai_severity || null,
+    ai_summary: reportInput.ai_summary || null,
+    responsible_agency: reportInput.responsible_agency || null,
+    priority_score: reportInput.priority_score || 0,
+  };
 
   if (!hasSupabaseConfig) {
     const localReport = {
-      ...report,
+      ...classifiedReport,
       id: `local-${Date.now()}`,
       created_at: new Date().toISOString(),
     };
@@ -188,14 +196,30 @@ export async function createReport(reportInput) {
 
   const { data, error } = await supabase
     .from('reports')
-    .insert(report)
+    .insert(classifiedReport)
     .select()
     .single();
 
   if (error) {
+    const missingClassificationColumns = ['ai_category', 'ai_severity', 'ai_summary', 'responsible_agency', 'priority_score']
+      .some(column => error.message?.includes(column));
+
+    if (missingClassificationColumns) {
+      const retry = await supabase
+        .from('reports')
+        .insert(report)
+        .select()
+        .single();
+
+      if (!retry.error) {
+        const profile = await addReportPoints(userId, Boolean(report.image_url));
+        return { data: retry.data, profile, source: 'supabase', warning: 'AI 분류 컬럼이 없어 기본 제보만 저장했습니다.' };
+      }
+    }
+
     console.warn('Supabase report fallback:', error.message);
     const localReport = {
-      ...report,
+      ...classifiedReport,
       id: `local-${Date.now()}`,
       created_at: new Date().toISOString(),
     };

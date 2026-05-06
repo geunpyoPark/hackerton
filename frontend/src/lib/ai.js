@@ -19,3 +19,23 @@ export async function fetchAccessibilitySummary({ userType, place, reports }) {
 
   return response.json();
 }
+
+export async function classifyReport({ userType, place, report }) {
+  const response = await fetch(`${apiBaseUrl}/ai/classify-report`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      user_type: userType,
+      place,
+      report,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error('AI 민원 분류 API 요청에 실패했습니다.');
+  }
+
+  return response.json();
+}

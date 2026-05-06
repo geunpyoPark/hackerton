@@ -36,7 +36,7 @@ function SelectFilter({ label }) {
   );
 }
 
-export function TopBar() {
+export function TopBar({ dataStatus = 'ready' }) {
   return (
     <div style={{
       padding: '18px clamp(16px, 2vw, 28px)',
@@ -48,6 +48,7 @@ export function TopBar() {
         <div style={{ fontSize: 26, fontWeight: 800, color: AD.ink, letterSpacing: '-0.02em' }}>대시보드</div>
         <div style={{ fontSize: 13, color: AD.muted, marginTop: 4 }}>
           접근성 민원 현황을 한눈에 확인하고 효율적으로 관리하세요.
+          {dataStatus === 'loading' ? ' 데이터를 불러오는 중입니다.' : ''}
         </div>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
