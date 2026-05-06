@@ -4,6 +4,7 @@ import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 import { PLACES, REPORT_TYPES as BASE_REPORT_TYPES } from '../data/accessibility';
 import { createReport } from '../lib/accessibility';
+import { classifyReport } from '../lib/ai';
 import { uploadReportImage } from '../lib/cloudinary';
 
 const REPORT_TYPES = [
@@ -22,7 +23,7 @@ const PALETTE = {
   gray:   { soft: '#F1F5F9', fg: '#475569', border: '#CBD5E1' },
 };
 
-export function ReportScreen({ onNavigate, userId, places = PLACES, reports = [], onDataChange }) {
+export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, places = PLACES, reports = [], onDataChange }) {
   const [selected, setSelected] = useState(BASE_REPORT_TYPES[0].id);
   const [placeId, setPlaceId] = useState((places[0] || PLACES[0]).id);
   const [description, setDescription] = useState('');
@@ -39,7 +40,7 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
       setSubmitState('saving');
       setSubmitMessage('');
       const imageUrl = imageFile ? await uploadReportImage(imageFile) : '';
-      const result = await createReport({
+      const reportInput = {
         place_id: effectivePlaceId,
         user_id: userId,
         issue_type: selected,
@@ -47,6 +48,22 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
         image_url: imageUrl,
         lat: selectedPlace.lat,
         lng: selectedPlace.lng,
+      };
+      let classification = null;
+
+      try {
+        classification = await classifyReport({
+          userType,
+          place: selectedPlace,
+          report: reportInput,
+        });
+      } catch (error) {
+        console.warn('AI report classification skipped:', error.message);
+      }
+
+      const result = await createReport({
+        ...reportInput,
+        ...(classification || {}),
       });
 
       setDescription('');
@@ -55,7 +72,7 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
       await onDataChange?.();
       setSubmitState(result.source === 'supabase' ? 'saved' : 'fallback');
       setSubmitMessage(result.source === 'supabase'
-        ? (imageUrl ? '사진과 제보가 저장되었습니다.' : '제보가 Supabase에 저장되었습니다.')
+        ? (classification ? 'AI 분류와 제보가 저장되었습니다.' : (imageUrl ? '사진과 제보가 저장되었습니다.' : '제보가 Supabase에 저장되었습니다.'))
         : 'Supabase 연결이 없어 기기에 임시 저장했습니다.');
     } catch (error) {
       setSubmitState('error');

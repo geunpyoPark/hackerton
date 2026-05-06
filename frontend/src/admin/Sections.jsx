@@ -11,8 +11,9 @@ const TOP_ROWS = [
 ];
 const RISK_TONE = { '위험': 'red', '주의': 'yellow', '양호': 'green' };
 
-export function TopRegions() {
+export function TopRegions({ rows = TOP_ROWS }) {
   const cols = '42px minmax(76px, 1fr) 64px 58px 76px minmax(126px, 1.25fr)';
+  const tableRows = rows.length ? rows : TOP_ROWS;
 
   return (
     <Card title="TOP 5 위험 지역" padding={0}>
@@ -30,7 +31,7 @@ export function TopRegions() {
           <div style={{ textAlign: 'center' }}>최근 증가율</div>
           <div>처리 현황</div>
         </div>
-        {TOP_ROWS.map((r, i) => (
+        {tableRows.map((r, i) => (
           <div key={i} style={{
             display: 'grid', gridTemplateColumns: cols,
             gap: 8, alignItems: 'center',
@@ -73,8 +74,9 @@ const ORG_ROWS = [
   { name: '기타 기관',      total: '98건',  done: '62건',  rate: 63.3 },
 ];
 
-export function OrgStatus() {
+export function OrgStatus({ rows = ORG_ROWS }) {
   const cols = 'minmax(112px, 1.2fr) 58px 58px minmax(52px, .7fr) 48px';
+  const tableRows = rows.length ? rows : ORG_ROWS;
 
   return (
     <Card title="기관별 민원 현황" padding={0} action={<MoreLink/>}>
@@ -92,7 +94,7 @@ export function OrgStatus() {
           <div>처리율</div>
           <div/>
         </div>
-        {ORG_ROWS.map((o, i) => (
+        {tableRows.map((o, i) => (
           <div key={i} style={{
             display: 'grid', gridTemplateColumns: cols,
             gap: 8, alignItems: 'center',
@@ -251,8 +253,9 @@ const CASE_ROWS = [
 ];
 const STAT_TONE = { '접수': 'indigo', '처리중': 'yellow', '완료': 'green' };
 
-export function RecentCases() {
+export function RecentCases({ rows = CASE_ROWS }) {
   const cols = '120px 104px 92px minmax(180px, 1fr) 56px 74px 56px 104px';
+  const tableRows = rows.length ? rows : CASE_ROWS;
 
   return (
     <Card title="최근 민원 목록" padding={0} action={<MoreLink/>}>
@@ -271,7 +274,7 @@ export function RecentCases() {
           <div style={{ textAlign: 'center' }}>상태</div>
           <div>담당 기관</div>
         </div>
-        {CASE_ROWS.map((r, i) => (
+        {tableRows.map((r, i) => (
           <div key={i} style={{
             display: 'grid', gridTemplateColumns: cols,
             gap: 10, alignItems: 'center',
