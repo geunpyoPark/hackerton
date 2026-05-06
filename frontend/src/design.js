@@ -1,0 +1,21 @@
+export const AR = {
+  font: '"Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", system-ui, "Segoe UI", Roboto, sans-serif',
+  blue: '#2563EB',
+  blueDark: '#1D4ED8',
+  green: '#10B981',
+  greenSoft: '#D1FAE5',
+  yellow: '#F59E0B',
+  yellowSoft: '#FEF3C7',
+  red: '#EF4444',
+  redSoft: '#FEE2E2',
+  ink: '#0F172A',
+  muted: '#64748B',
+  bg: '#F4F6F8',
+  border: '#E5E8EE',
+  borderStrong: '#CBD5E1',
+  sev: {
+    red:    { soft: '#FEE2E2', fg: '#DC2626' },
+    yellow: { soft: '#FEF3C7', fg: '#D97706' },
+    green:  { soft: '#D1FAE5', fg: '#059669' },
+  },
+};
