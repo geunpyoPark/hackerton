@@ -74,7 +74,14 @@ function loadKakaoMapSdk() {
   return kakaoMapLoader;
 }
 
-export function KakaoMap({ places = [], routePath = EMPTY_ROUTE_PATH, center, height = '100%', disableFallbackRoute = false }) {
+export function KakaoMap({
+  places = [],
+  routePath = EMPTY_ROUTE_PATH,
+  center,
+  height = '100%',
+  disableFallbackRoute = false,
+  onPlaceClick,
+}) {
   const mapNodeRef = useRef(null);
   const mapRef = useRef(null);
   const centerRef = useRef(null);
@@ -144,7 +151,7 @@ export function KakaoMap({ places = [], routePath = EMPTY_ROUTE_PATH, center, he
               map,
               position,
               yAnchor: place.type ? 0.9 : 2.35,
-              content: buildOverlayContent(place, index, validPlaces.length),
+              content: buildOverlayContent(place, index, validPlaces.length, onPlaceClick),
             });
           }
         });
@@ -169,7 +176,7 @@ export function KakaoMap({ places = [], routePath = EMPTY_ROUTE_PATH, center, he
       mapRef.current = null;
       centerRef.current = null;
     };
-  }, [center, disableFallbackRoute, mapPlaces, routePath]);
+  }, [center, disableFallbackRoute, mapPlaces, onPlaceClick, routePath]);
 
   useEffect(() => {
     if (!mapNodeRef.current || !window.ResizeObserver) return undefined;
@@ -255,29 +262,53 @@ function getRouteCenter(places) {
   };
 }
 
-function buildOverlayContent(place, index, total) {
+function buildOverlayContent(place, index, total, onPlaceClick) {
   const isFacility = Boolean(place.type);
-  const isStart = place.routeRole === 'start' || (!isFacility && index === 0);
-  const isEnd = place.routeRole === 'end' || (!isFacility && index === total - 1);
+  const isRouteRisk = Boolean(place.routeRisk);
+  const isStart = place.routeRole === 'start' || (!isFacility && !isRouteRisk && index === 0);
+  const isEnd = place.routeRole === 'end' || (!isFacility && !isRouteRisk && index === total - 1);
   const style = facilityStyle[place.type];
-  const label = isFacility ? style?.label || 'F' : isStart ? '출발' : isEnd ? '도착' : place.name;
-  const background = isFacility ? style?.color || AR.blue : isStart ? AR.blue : isEnd ? AR.red : '#fff';
-  const color = isFacility || isStart || isEnd ? '#fff' : AR.ink;
-  const border = isFacility || isStart || isEnd ? 'none' : `1px solid ${AR.border}`;
+  const label = isFacility ? style?.label || 'F' : isRouteRisk ? '위험' : isStart ? '출발' : isEnd ? '도착' : place.name;
+  const background = isFacility ? style?.color || AR.blue : isRouteRisk ? AR.red : isStart ? AR.blue : isEnd ? AR.red : '#fff';
+  const color = isFacility || isRouteRisk || isStart || isEnd ? '#fff' : AR.ink;
+  const border = isFacility || isRouteRisk || isStart || isEnd ? 'none' : `1px solid ${AR.border}`;
+  const element = document.createElement('button');
 
-  if (isFacility) {
-    return `<div title="${escapeHtml(place.name)}" style="width:22px;height:22px;border-radius:50%;background:${background};color:${color};border:2px solid #fff;font-size:9px;font-weight:800;line-height:22px;text-align:center;box-shadow:0 2px 7px rgba(15,23,42,.24)">${label}</div>`;
+  element.type = 'button';
+  element.title = place.name || label;
+  element.textContent = label;
+  element.style.border = border;
+  element.style.background = background;
+  element.style.color = color;
+  element.style.fontWeight = '800';
+  element.style.textAlign = 'center';
+  element.style.boxShadow = '0 2px 8px rgba(15,23,42,.18)';
+  element.style.cursor = isRouteRisk || onPlaceClick ? 'pointer' : 'default';
+
+  if (onPlaceClick) {
+    element.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      onPlaceClick(place);
+    });
   }
 
-  return `<div style="padding:4px 8px;border-radius:6px;background:${background};color:${color};border:${border};font-size:11px;font-weight:700;white-space:nowrap;box-shadow:0 2px 8px rgba(15,23,42,.18)">${label}</div>`;
-}
+  if (isFacility) {
+    element.style.width = '22px';
+    element.style.height = '22px';
+    element.style.borderRadius = '50%';
+    element.style.border = '2px solid #fff';
+    element.style.fontSize = '9px';
+    element.style.lineHeight = '18px';
+    element.style.padding = '0';
+    return element;
+  }
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('"', '&quot;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
+  element.style.padding = '4px 8px';
+  element.style.borderRadius = '6px';
+  element.style.fontSize = '11px';
+  element.style.whiteSpace = 'nowrap';
+  return element;
 }
 
 function FallbackMarkers({ places }) {

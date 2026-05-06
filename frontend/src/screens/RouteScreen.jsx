@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
@@ -60,6 +60,7 @@ export function RouteScreen({
   const [walkingStatus, setWalkingStatus] = useState('idle');
   const [walkingError, setWalkingError] = useState('');
   const [walkingEndpoints, setWalkingEndpoints] = useState(null);
+  const [selectedRouteRiskId, setSelectedRouteRiskId] = useState(null);
   const fromName = routeQuery?.from || '강남역';
   const toName = routeQuery?.to || '코엑스';
   const fromStation = normalizeStationName(fromName);
@@ -105,12 +106,44 @@ export function RouteScreen({
         (facility.stationName === fromStation || facility.stationName === toStation)
       ))
     : [];
+  const mapRoutePath = useMemo(() => {
+    if (routeMode === 'walk') {
+      return walkingRoute?.path?.length > 1 ? walkingRoute.path : [];
+    }
 
-  const mapPlaces = [...routePlaces, ...visibleFacilities];
-  const mapRoutePath = routeMode === 'walk'
-    ? walkingRoute?.path?.length > 1 ? walkingRoute.path : []
-    : odsayRoute?.polyline || [];
+    return odsayRoute?.polyline || [];
+  }, [odsayRoute, routeMode, walkingRoute]);
+  const routeRiskReports = useMemo(
+    () => findRouteRiskReports(allReports, mapRoutePath),
+    [allReports, mapRoutePath],
+  );
+  const routeRiskMarkers = useMemo(
+    () => routeRiskReports.map(report => ({
+      id: `route-risk-${report.id}`,
+      name: getReportRiskLabel(report),
+      lat: Number(report.lat),
+      lng: Number(report.lng),
+      risk: 'red',
+      routeRisk: true,
+      reportId: report.id,
+    })),
+    [routeRiskReports],
+  );
+  const mapPlaces = [...routePlaces, ...visibleFacilities, ...routeRiskMarkers];
+  const hasRouteRisk = routeMode === 'walk' && routeRiskReports.length > 0;
+  const routeScore = hasRouteRisk
+    ? Math.max(30, reliability - routeRiskReports.length * 18)
+    : reliability;
+  const routeRiskSummary = hasRouteRisk
+    ? `현재 경로 주변 ${routeRiskReports.length}건의 위험 제보가 있어 우회 확인이 필요합니다.`
+    : walkingRecommendation;
+  const selectedRouteRisk = routeRiskReports.find(report => report.id === selectedRouteRiskId);
   const reportCount = reports.length + mainPlace.recent_reports_count;
+
+  const handleMapPlaceClick = useCallback((place) => {
+    if (!place.routeRisk || !place.reportId) return;
+    setSelectedRouteRiskId(place.reportId);
+  }, []);
 
   useEffect(() => {
     let canceled = false;
@@ -194,7 +227,7 @@ export function RouteScreen({
       setWalkingEndpoints(null);
     });
 
-    resolveWalkingEndpoints(fromStation, destinationStation, userType)
+    resolveWalkingEndpoints({ fromName, toName, fromStation, toStation: destinationStation, userType })
       .then(({ from, to, fromFacility, toFacility }) => {
         if (canceled) return;
 
@@ -224,7 +257,7 @@ export function RouteScreen({
     return () => {
       canceled = true;
     };
-  }, [fromStation, toStation, routeMode, userType]);
+  }, [fromName, fromStation, toName, toStation, routeMode, userType]);
 
   function handleFacilityLayerClick(type) {
     const nextType = activeFacilityType === type ? null : type;
@@ -312,7 +345,7 @@ export function RouteScreen({
           }}>
             <Stat label="총 거리" value={distanceLabel}/>
             <Stat label="예상 시간" value={timeLabel} border/>
-            <Stat label="접근성 점수" value={`${reliability}%`} valueColor={reliability >= 80 ? AR.green : AR.yellow} border/>
+            <Stat label="접근성 점수" value={`${routeScore}%`} valueColor={routeScore >= 80 ? AR.green : AR.yellow} border/>
           </div>
 
           <div style={{
@@ -332,6 +365,7 @@ export function RouteScreen({
             places={mapPlaces}
             routePath={mapRoutePath}
             disableFallbackRoute={routeMode === 'walk' && !walkingRoute?.path?.length}
+            onPlaceClick={handleMapPlaceClick}
           />
           <div style={{
             position: 'absolute', top: 12, right: 12,
@@ -355,7 +389,13 @@ export function RouteScreen({
               <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
             </svg>
           </div>
-          {routeMode === 'walk' && (
+          {selectedRouteRisk && (
+            <RouteRiskDetail
+              report={selectedRouteRisk}
+              onClose={() => setSelectedRouteRiskId(null)}
+            />
+          )}
+          {routeMode === 'walk' && !selectedRouteRisk && (
             <div style={{
               position: 'absolute',
               left: 12,
@@ -452,7 +492,7 @@ export function RouteScreen({
                 fontSize: 13, fontWeight: 800,
               }}>✓</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: AR.ink }}>
-                {routeMode === 'walk' ? walkingRecommendation : routeRecommendation.oneLine}
+                {routeMode === 'walk' ? routeRiskSummary : routeRecommendation.oneLine}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -467,12 +507,21 @@ export function RouteScreen({
           {/* Risks card */}
           <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: `1px solid ${AR.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: AR.muted, marginBottom: 10 }}>위험 요소</div>
-            {reports.slice(0, 3).map(report => (
+            {hasRouteRisk && (
+              <div style={{ marginBottom: 10 }}>
+                <RiskRow
+                  severity="red"
+                  title="현재 경로상 위험 제보 감지"
+                  sub="공사, 통행 불가, 계단/턱 등은 우회 확인이 필요합니다"
+                />
+              </div>
+            )}
+            {(hasRouteRisk ? routeRiskReports : reports).slice(0, 3).map(report => (
               <RiskRow
                 key={report.id}
-                severity={report.issue_type === 'elevator_broken' || report.issue_type === 'blocked' ? 'red' : 'yellow'}
-                title={report.description || '접근성 위험 제보'}
-                sub={`${formatRelativeDate(report.created_at)} 제보`}
+                severity={getReportRiskSeverity(report)}
+                title={getReportRiskLabel(report)}
+                sub={formatReportRiskSub(report)}
               />
             ))}
             <div style={{ height: 8 }}/>
@@ -496,9 +545,13 @@ export function RouteScreen({
               </div>
             </div>
             <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.55 }}>
-              {routeMode === 'walk' ? walkingRecommendation : routeRecommendation.oneLine}{' '}
+              {routeMode === 'walk' ? routeRiskSummary : routeRecommendation.oneLine}{' '}
               <span style={{ color: routeRecommendation.accessible ? AR.green : AR.red, fontWeight: 700 }}>
-                {routeMode === 'walk' ? 'TMAP 보행 경로이며, 휠체어 접근성은 엘리베이터 출구 데이터와 함께 확인하세요.' : routeRecommendation.action}
+                {routeMode === 'walk'
+                  ? hasRouteRisk
+                    ? '빨간 위험 마커 위치를 피해서 이동하거나 대체 경로를 확인하세요.'
+                    : 'TMAP 보행 경로이며, 휠체어 접근성은 엘리베이터 출구 데이터와 함께 확인하세요.'
+                  : routeRecommendation.action}
               </span>
             </div>
           </div>
@@ -510,14 +563,14 @@ export function RouteScreen({
               <div style={{ fontSize: 11, color: AR.muted }}>최근 제보 {reportCount}건 · {formatRelativeDate(mainPlace.last_updated)} 업데이트</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-              <div style={{ fontSize: 32, fontWeight: 800, color: reliability >= 80 ? AR.green : AR.yellow, letterSpacing: '-0.02em' }}>{reliability}</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: reliability >= 80 ? AR.green : AR.yellow }}>%</div>
-              <div style={{ marginLeft: 'auto', fontSize: 12, color: reliability >= 80 ? AR.green : AR.yellow, fontWeight: 600 }}>{reliability >= 80 ? '높음' : '주의'}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: routeScore >= 80 ? AR.green : AR.yellow, letterSpacing: '-0.02em' }}>{routeScore}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: routeScore >= 80 ? AR.green : AR.yellow }}>%</div>
+              <div style={{ marginLeft: 'auto', fontSize: 12, color: routeScore >= 80 ? AR.green : AR.yellow, fontWeight: 600 }}>{routeScore >= 80 ? '높음' : '주의'}</div>
             </div>
             <div style={{ height: 8, background: AR.bg, borderRadius: 4, overflow: 'hidden' }}>
               <div style={{
-                width: `${reliability}%`, height: '100%',
-                background: `linear-gradient(90deg, ${reliability >= 80 ? AR.green : AR.yellow} 0%, #34D399 100%)`,
+                width: `${routeScore}%`, height: '100%',
+                background: `linear-gradient(90deg, ${routeScore >= 80 ? AR.green : AR.yellow} 0%, #34D399 100%)`,
                 borderRadius: 4,
               }}/>
             </div>
@@ -719,15 +772,160 @@ function formatDistance(meters) {
   return `${Math.round(distance)} m`;
 }
 
-async function resolveWalkingEndpoints(fromStation, toStation, userType) {
+const ROUTE_RISK_DISTANCE_METERS = 60;
+const HIGH_RISK_ISSUE_TYPES = new Set([
+  'elevator_broken',
+  'stairs',
+  'curb',
+  'construction',
+  'blocked',
+  'other',
+]);
+const HIGH_RISK_AI_CATEGORIES = new Set([
+  '엘리베이터 고장',
+  '계단/턱',
+  '공사 중',
+  '통행 불가',
+  '급경사',
+  '보도 파손',
+  '장애물 적치',
+  '점자블록 문제',
+]);
+
+function findRouteRiskReports(reports, routePath) {
+  if (!Array.isArray(reports) || !Array.isArray(routePath) || routePath.length < 2) {
+    return [];
+  }
+
+  return reports
+    .filter(isRouteBlockingReport)
+    .map((report) => {
+      const lat = Number(report.lat);
+      const lng = Number(report.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+      const distance = getDistanceToRouteMeters({ lat, lng }, routePath);
+      if (distance > ROUTE_RISK_DISTANCE_METERS) return null;
+
+      return {
+        ...report,
+        routeDistance: distance,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.routeDistance - b.routeDistance);
+}
+
+function isRouteBlockingReport(report) {
+  if (!report) return false;
+  return (
+    HIGH_RISK_ISSUE_TYPES.has(report.issue_type) ||
+    HIGH_RISK_AI_CATEGORIES.has(report.ai_category) ||
+    report.ai_severity === 'high'
+  );
+}
+
+function getDistanceToRouteMeters(point, routePath) {
+  return routePath.reduce((minDistance, current, index) => {
+    if (index === routePath.length - 1) return minDistance;
+
+    const next = routePath[index + 1];
+    if (!hasLatLng(current) || !hasLatLng(next)) return minDistance;
+
+    return Math.min(minDistance, getPointToSegmentDistanceMeters(point, current, next));
+  }, Infinity);
+}
+
+function getPointToSegmentDistanceMeters(point, start, end) {
+  const originLat = point.lat;
+  const p = toMeters(point, originLat);
+  const a = toMeters(start, originLat);
+  const b = toMeters(end, originLat);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(p.x - a.x, p.y - a.y);
+  }
+
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+  const projection = {
+    x: a.x + t * dx,
+    y: a.y + t * dy,
+  };
+
+  return Math.hypot(p.x - projection.x, p.y - projection.y);
+}
+
+function toMeters(point, originLat) {
+  const lat = Number(point.lat);
+  const lng = Number(point.lng);
+  const metersPerDegreeLat = 111_320;
+  const metersPerDegreeLng = 111_320 * Math.cos(originLat * Math.PI / 180);
+
+  return {
+    x: lng * metersPerDegreeLng,
+    y: lat * metersPerDegreeLat,
+  };
+}
+
+function hasLatLng(point) {
+  return Number.isFinite(Number(point?.lat)) && Number.isFinite(Number(point?.lng));
+}
+
+function getReportRiskSeverity(report) {
+  return report.ai_severity === 'high' ||
+    report.issue_type === 'elevator_broken' ||
+    report.issue_type === 'blocked' ||
+    report.issue_type === 'construction'
+    ? 'red'
+    : 'yellow';
+}
+
+function getReportRiskLabel(report) {
+  return report.ai_category || report.description || getIssueTypeLabel(report.issue_type);
+}
+
+function getIssueTypeLabel(issueType) {
+  const labels = {
+    elevator_broken: '엘리베이터 고장',
+    stairs: '계단 있음',
+    curb: '턱 있음',
+    steep_slope: '급경사',
+    slope: '경사 있음',
+    construction: '공사 중',
+    blocked: '통행 불가',
+    other: '기타 위험',
+  };
+
+  return labels[issueType] || '접근성 위험 제보';
+}
+
+function formatReportRiskSub(report) {
+  const parts = [];
+  if (Number.isFinite(report.routeDistance)) {
+    parts.push(`경로에서 약 ${Math.round(report.routeDistance)}m`);
+  }
+  if (report.responsible_agency) {
+    parts.push(report.responsible_agency);
+  }
+  parts.push(`${formatRelativeDate(report.created_at)} 제보`);
+  return parts.join(' · ');
+}
+
+async function resolveWalkingEndpoints({ fromName, toName, fromStation, toStation, userType }) {
   const fromFacility = findRecommendedFacility(fromStation, userType);
   const toFacility = findRecommendedFacility(toStation, userType);
   const [fromFacilityCoords, toFacilityCoords] = await Promise.all([
     resolveFacilityCoords(fromFacility),
     resolveFacilityCoords(toFacility),
   ]);
-  const from = fromFacilityCoords || STATION_COORDS[fromStation];
-  const to = toFacilityCoords || STATION_COORDS[toStation];
+  const [fromPlaceCoords, toPlaceCoords] = await Promise.all([
+    fromFacilityCoords ? Promise.resolve(null) : resolveRouteEndpointCoords(fromName, fromStation),
+    toFacilityCoords ? Promise.resolve(null) : resolveRouteEndpointCoords(toName, toStation),
+  ]);
+  const from = fromFacilityCoords || fromPlaceCoords || STATION_COORDS[fromStation];
+  const to = toFacilityCoords || toPlaceCoords || STATION_COORDS[toStation];
 
   return {
     from,
@@ -741,6 +939,18 @@ async function resolveWalkingEndpoints(fromStation, toStation, userType) {
   };
 }
 
+async function resolveRouteEndpointCoords(name, stationName) {
+  if (STATION_COORDS[stationName]) return STATION_COORDS[stationName];
+  if (!name) return null;
+
+  try {
+    return await withTimeout(resolveKakaoPlaceLocation(name), 1800);
+  } catch (error) {
+    console.error('Kakao route endpoint geocode failed:', error);
+    return null;
+  }
+}
+
 async function resolveFacilityCoords(facility) {
   if (!facility) return null;
   if (typeof facility.lat === 'number' && typeof facility.lng === 'number') {
@@ -749,11 +959,20 @@ async function resolveFacilityCoords(facility) {
   if (!facility.locationQuery) return null;
 
   try {
-    return await resolveKakaoPlaceLocation(facility.locationQuery);
+    return await withTimeout(resolveKakaoPlaceLocation(facility.locationQuery), 1800);
   } catch (error) {
     console.error('Kakao facility geocode failed:', error);
     return null;
   }
+}
+
+function withTimeout(promise, timeoutMs) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => {
+      setTimeout(() => resolve(null), timeoutMs);
+    }),
+  ]);
 }
 
 function buildWalkingRecommendation(userType, endpoints) {
@@ -793,6 +1012,107 @@ function formatEndpointFacility(facility) {
   const exit = facility.exitNo ? `${facility.exitNo}번 출구` : '';
   const label = FACILITY_LAYERS.find(layer => layer.type === facility.type)?.label || facility.name;
   return `${facility.stationName}역 ${exit} ${label}`.replace(/\s+/g, ' ').trim();
+}
+
+function RouteRiskDetail({ report, onClose }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      left: 12,
+      right: 12,
+      bottom: 12,
+      zIndex: 4,
+      borderRadius: 12,
+      background: 'rgba(255,255,255,0.97)',
+      border: `1px solid ${AR.border}`,
+      boxShadow: '0 10px 24px rgba(15,23,42,0.18)',
+      padding: 12,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <div style={{
+          width: 28,
+          height: 28,
+          borderRadius: 14,
+          background: AR.redSoft,
+          color: AR.red,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <path d="M12 3l11 18H1L12 3z" stroke="currentColor" strokeWidth="2.4" strokeLinejoin="round" fill="currentColor" fillOpacity="0.15"/>
+            <path d="M12 10v5M12 17.5v.5" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/>
+          </svg>
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: AR.red, marginBottom: 3 }}>
+            경로상 위험 제보
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: AR.ink, lineHeight: 1.35 }}>
+            {getReportRiskLabel(report)}
+          </div>
+          {report.description && (
+            <div style={{
+              marginTop: 4,
+              fontSize: 12,
+              color: '#334155',
+              lineHeight: 1.45,
+              wordBreak: 'keep-all',
+            }}>
+              {report.description}
+            </div>
+          )}
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '5px 6px',
+            marginTop: 9,
+          }}>
+            <RiskChip>{formatReportRiskSub(report)}</RiskChip>
+            {report.ai_severity && <RiskChip>{report.ai_severity === 'high' ? '높은 위험도' : '주의'}</RiskChip>}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="제보 상세 닫기"
+          style={{
+            width: 28,
+            height: 28,
+            border: 'none',
+            borderRadius: 14,
+            background: AR.bg,
+            color: AR.muted,
+            fontSize: 18,
+            lineHeight: '28px',
+            flexShrink: 0,
+            cursor: 'pointer',
+          }}
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RiskChip({ children }) {
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      borderRadius: 999,
+      background: AR.bg,
+      color: AR.muted,
+      padding: '4px 7px',
+      fontSize: 11,
+      fontWeight: 700,
+      lineHeight: 1.2,
+    }}>
+      {children}
+    </span>
+  );
 }
 
 function ModeButton({ active, onClick, children }) {
