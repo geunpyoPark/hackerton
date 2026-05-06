@@ -9,7 +9,7 @@ import { ProfileScreen } from './screens/ProfileScreen';
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [screen, setScreen] = useState('home');
-  const [history, setHistory] = useState([]);
+  const [, setHistory] = useState([]);
 
   function navigate(to) {
     setHistory(h => [...h, screen]);

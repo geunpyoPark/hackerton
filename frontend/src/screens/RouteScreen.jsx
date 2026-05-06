@@ -1,5 +1,5 @@
 import { AR } from '../design';
-import { FakeMap } from '../components/FakeMap';
+import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 
 export function RouteScreen({ onNavigate, onBack }) {
@@ -60,7 +60,7 @@ export function RouteScreen({ onNavigate, onBack }) {
 
         {/* Map */}
         <div style={{ position: 'relative', height: 280, background: '#E8EEF4', overflow: 'hidden' }}>
-          <FakeMap/>
+          <KakaoMap/>
           <div style={{
             position: 'absolute', top: 12, right: 12,
             width: 38, height: 38, borderRadius: 10,
