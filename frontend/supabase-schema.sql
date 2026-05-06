@@ -39,7 +39,7 @@ create table if not exists reports (
   place_id text not null references places(id) on delete cascade,
   user_id text not null references profiles(id) on delete cascade,
   issue_type text not null
-    check (issue_type in ('elevator_broken', 'stairs', 'curb', 'steep_slope', 'slope', 'construction', 'blocked')),
+    check (issue_type in ('elevator_broken', 'stairs', 'curb', 'steep_slope', 'slope', 'construction', 'blocked', 'other')),
   description text,
   image_url text,
   lat double precision,

@@ -14,7 +14,7 @@ const REPORT_TYPES = [
   { id: 'curb',            label: '턱 있음',         color: 'yellow', icon: 'bump' },
   { id: 'steep_slope',     label: '급경사',          color: 'purple', icon: 'slope' },
   { id: 'construction',    label: '공사 중',         color: 'gray',   icon: 'const' },
-  { id: 'blocked',         label: '기타',            color: 'gray',   icon: 'etc' },
+  { id: 'other',           label: '기타',            color: 'gray',   icon: 'etc' },
 ];
 
 const PALETTE = {

@@ -6,6 +6,7 @@ const ISSUE_LABELS = {
   slope: '급경사',
   construction: '공사 중',
   blocked: '통행 불가',
+  other: '기타',
 };
 
 const ISSUE_COLORS = {
@@ -17,6 +18,22 @@ const ISSUE_COLORS = {
   construction: '#10B981',
   blocked: '#EF4444',
   other: '#CBD5E1',
+};
+
+const CATEGORY_COLORS = {
+  '엘리베이터 고장': '#6366F1',
+  '계단/턱': '#F59E0B',
+  '급경사': '#3B82F6',
+  '공사 중': '#10B981',
+  '통행 불가': '#EF4444',
+  '안내 표지 부족': '#8B5CF6',
+  '점자블록 문제': '#EC4899',
+  '장애물 적치': '#F97316',
+  '보도 파손': '#DC2626',
+  '조명 부족': '#EAB308',
+  '불법 주정차': '#64748B',
+  '임시 통행로 문제': '#0EA5E9',
+  '기타': '#CBD5E1',
 };
 
 const REGION_COORDS = {
@@ -162,14 +179,14 @@ export function buildAdminAnalytics(reports = [], places = []) {
       };
     });
 
-  const issueCounts = countBy(enriched, report => report.issue_type || 'other');
+  const issueCounts = countBy(enriched, report => report.issueLabel || '기타');
   const typeDistribution = [...issueCounts.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([issueType, count]) => ({
-      label: getIssueLabel(issueType),
+    .map(([label, count]) => ({
+      label,
       val: percent(count, total),
       count,
-      color: ISSUE_COLORS[issueType] || ISSUE_COLORS.other,
+      color: CATEGORY_COLORS[label] || ISSUE_COLORS.other,
     }));
 
   const agencyCounts = countBy(enriched, report => report.agency);
