@@ -5,6 +5,7 @@ import { HomeScreen } from './screens/HomeScreen';
 import { RouteScreen } from './screens/RouteScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
+import { AdminDashboard } from './admin/AdminDashboard';
 import { DEMO_REPORTS, PLACES } from './data/accessibility';
 import {
   ensureLocalProfile,
@@ -18,10 +19,10 @@ import {
 } from './lib/accessibility';
 import { exchangeKakaoCode, startKakaoLogin } from './lib/kakaoAuth';
 
-const ROUTES = ['login', 'home', 'route', 'report', 'profile'];
+const ROUTES = ['login', 'home', 'route', 'report', 'profile', 'admin'];
 
 function getInitialScreen() {
-  const route = window.location.pathname.replace('/', '') || 'login';
+  const route = window.location.pathname.split('/').filter(Boolean)[0] || 'login';
   return ROUTES.includes(route) ? route : 'login';
 }
 
@@ -180,6 +181,14 @@ export default function App() {
       return;
     }
 
+    if (method === 'admin') {
+      localStorage.setItem('ableRouteAdminLoggedIn', 'true');
+      setLoginError('');
+      setScreen('admin');
+      window.history.pushState({}, '', '/admin');
+      return;
+    }
+
     localStorage.setItem('ableRouteLoggedIn', 'true');
     localStorage.setItem('ableRouteLoginMethod', method);
     const nextUserId = getLocalUserId();
@@ -192,9 +201,15 @@ export default function App() {
     localStorage.removeItem('ableRouteLoggedIn');
     localStorage.removeItem('ableRouteLoginMethod');
     localStorage.removeItem('ableRouteKakaoUser'); // ✅ 추가
+    localStorage.removeItem('ableRouteAdminLoggedIn');
     setLoggedIn(false);
     setProfile(null); // ✅ 추가
     navigate('login');
+  }
+
+  // Admin dashboard rendered full-screen outside the phone shell
+  if (screen === 'admin') {
+    return <AdminDashboard/>;
   }
 
   const screenEl = !loggedIn || screen === 'login'
