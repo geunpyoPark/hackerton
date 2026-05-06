@@ -3,7 +3,7 @@ import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 import { PLACES, REPORT_TYPES as BASE_REPORT_TYPES } from '../data/accessibility';
-import { getStoredReports, saveStoredReport } from '../lib/accessibility';
+import { createReport } from '../lib/accessibility';
 
 const REPORT_TYPES = [
   { id: 'elevator_broken', label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
@@ -21,34 +21,36 @@ const PALETTE = {
   gray:   { soft: '#F1F5F9', fg: '#475569', border: '#CBD5E1' },
 };
 
-export function ReportScreen({ onNavigate }) {
+export function ReportScreen({ onNavigate, userId, places = PLACES, reports = [], onDataChange }) {
   const [selected, setSelected] = useState(BASE_REPORT_TYPES[0].id);
-  const [placeId, setPlaceId] = useState(PLACES[0].id);
+  const [placeId, setPlaceId] = useState((places[0] || PLACES[0]).id);
   const [description, setDescription] = useState('');
   const [imageName, setImageName] = useState('');
-  const [submitted, setSubmitted] = useState(false);
-  const [myReportsCount, setMyReportsCount] = useState(() => getStoredReports().length);
-  const selectedPlace = PLACES.find(place => place.id === placeId) || PLACES[0];
+  const [submitState, setSubmitState] = useState('idle');
+  const [submitMessage, setSubmitMessage] = useState('');
+  const myReportsCount = reports.filter(report => report.user_id === userId).length;
+  const effectivePlaceId = places.some(place => place.id === placeId) ? placeId : (places[0] || PLACES[0]).id;
+  const selectedPlace = places.find(place => place.id === effectivePlaceId) || places[0] || PLACES[0];
 
-  function handleSubmit() {
-    const report = {
-      id: `local-${Date.now()}`,
-      place_id: placeId,
-      user_id: 'local-user',
+  async function handleSubmit() {
+    setSubmitState('saving');
+    const result = await createReport({
+      place_id: effectivePlaceId,
+      user_id: userId,
       issue_type: selected,
       description: description.trim() || REPORT_TYPES.find(type => type.id === selected)?.label || '접근성 제보',
       image_url: imageName ? `local://${imageName}` : '',
       lat: selectedPlace.lat,
       lng: selectedPlace.lng,
-      created_at: new Date().toISOString(),
-      status: 'active',
-      verified_count: 0,
-    };
-    saveStoredReport(report);
-    setSubmitted(true);
+    });
+
     setDescription('');
     setImageName('');
-    setMyReportsCount(getStoredReports().length);
+    await onDataChange?.();
+    setSubmitState(result.source === 'supabase' ? 'saved' : 'fallback');
+    setSubmitMessage(result.source === 'supabase'
+      ? '제보가 Supabase에 저장되었습니다.'
+      : 'Supabase 연결이 없어 기기에 임시 저장했습니다.');
   }
 
   return (
@@ -74,12 +76,12 @@ export function ReportScreen({ onNavigate }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 20px' }}>
         {/* Place */}
         <Section title="장소 선택">
-          <select value={placeId} onChange={event => setPlaceId(event.target.value)} style={{
+          <select value={effectivePlaceId} onChange={event => setPlaceId(event.target.value)} style={{
             background: '#fff', borderRadius: 12,
             padding: '12px 14px', border: `1px solid ${AR.border}`,
             width: '100%', fontSize: 14, color: AR.ink, fontFamily: AR.font,
           }}>
-            {PLACES.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}
+            {places.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}
           </select>
           <div style={{
             marginTop: 8, height: 110, borderRadius: 12, overflow: 'hidden',
@@ -153,26 +155,26 @@ export function ReportScreen({ onNavigate }) {
           </label>
         </Section>
 
-        {submitted && (
+        {submitState !== 'idle' && submitState !== 'saving' && (
           <div style={{
             marginTop: 6,
             padding: '10px 12px',
             borderRadius: 10,
-            background: AR.greenSoft,
-            color: AR.green,
+            background: submitState === 'saved' ? AR.greenSoft : AR.yellowSoft,
+            color: submitState === 'saved' ? AR.green : AR.yellow,
             fontSize: 13,
             fontWeight: 700,
-          }}>제보가 기기에 저장되었습니다. MVP에서는 localStorage에 저장됩니다.</div>
+          }}>{submitMessage}</div>
         )}
 
-        <button onClick={handleSubmit} style={{
+        <button onClick={handleSubmit} disabled={submitState === 'saving'} style={{
           marginTop: 16, width: '100%', height: 54,
-          background: AR.blue, color: '#fff',
+          background: submitState === 'saving' ? AR.muted : AR.blue, color: '#fff',
           border: 'none', borderRadius: 14,
           fontSize: 16, fontWeight: 700,
           fontFamily: AR.font,
           boxShadow: '0 4px 12px rgba(37,99,235,0.24)',
-        }}>제출하기</button>
+        }}>{submitState === 'saving' ? '저장 중...' : '제출하기'}</button>
 
         {/* My reports */}
         <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

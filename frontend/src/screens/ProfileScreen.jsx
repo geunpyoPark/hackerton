@@ -1,12 +1,13 @@
 import { AR } from '../design';
 import { TabBar } from '../components/TabBar';
 import { USER_TYPES } from '../data/accessibility';
-import { getStoredReports, getUserTypeLabel } from '../lib/accessibility';
+import { getUserTypeLabel } from '../lib/accessibility';
 
-export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange, onLogout }) {
-  const localReports = getStoredReports();
-  const points = localReports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 1240);
-  const level = Math.max(1, Math.floor(points / 500) + 1);
+export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange, onLogout, profile, reports = [], userId }) {
+  const myReports = reports.filter(report => report.user_id === userId);
+  const points = profile?.points ?? myReports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 0);
+  const level = profile?.level ?? Math.max(1, Math.floor(points / 500) + 1);
+  const nickname = profile?.nickname || 'able_user01';
 
   return (
     <div style={{
@@ -55,7 +56,7 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ fontSize: 16, fontWeight: 800, color: AR.ink, letterSpacing: '-0.01em' }}>able_user01</div>
+              <div style={{ fontSize: 16, fontWeight: 800, color: AR.ink, letterSpacing: '-0.01em' }}>{nickname}</div>
               <div style={{
                 background: AR.blue, color: '#fff',
                 fontSize: 10, fontWeight: 800,
@@ -109,7 +110,7 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
         {/* Activity */}
         <div style={{ marginTop: 18, fontSize: 14, fontWeight: 700, color: AR.ink, marginBottom: 8 }}>내 활동</div>
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${AR.border}`, padding: '4px 14px' }}>
-          <ActivityRow icon="report" label="제보한 정보"       value={`${24 + localReports.length}건`}/>
+          <ActivityRow icon="report" label="제보한 정보"       value={`${myReports.length}건`}/>
           <ActivityRow icon="users"  label="도움 받은 사용자"  value="82명"/>
           <ActivityRow icon="check"  label="채택된 제보"       value="22건"/>
           <ActivityRow icon="point"  label="포인트"            value={`${points.toLocaleString()} P`} last/>

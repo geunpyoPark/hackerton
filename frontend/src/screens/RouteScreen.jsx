@@ -5,20 +5,20 @@ import { PLACES } from '../data/accessibility';
 import {
   buildAccessibilitySummary,
   calculateReliability,
+  filterReportsForPlace,
   formatRelativeDate,
-  getReportsForPlace,
   getRiskLevel,
   getUserTypeLabel,
 } from '../lib/accessibility';
 
-export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair' }) {
-  const mainPlace = PLACES[0];
-  const reports = getReportsForPlace(mainPlace.id);
+export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', places = PLACES, reports: allReports = [] }) {
+  const mainPlace = places.find(place => place.id === 'gangnam-exit-2') || places[0] || PLACES[0];
+  const reports = filterReportsForPlace(allReports, mainPlace.id);
   const reliability = calculateReliability(mainPlace, reports);
   const summary = buildAccessibilitySummary(mainPlace, reports, userType);
-  const mapPlaces = PLACES.map(place => ({
+  const mapPlaces = places.map(place => ({
     ...place,
-    risk: getRiskLevel(place, getReportsForPlace(place.id)),
+    risk: getRiskLevel(place, filterReportsForPlace(allReports, place.id)),
   }));
   const reportCount = reports.length + mainPlace.recent_reports_count;
 
