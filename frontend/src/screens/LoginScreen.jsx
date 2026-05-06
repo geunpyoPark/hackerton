@@ -92,7 +92,7 @@ export function LoginScreen({ onLogin, loginError }) {
           </svg>
           카카오로 시작하기
         </button>
-        <button onClick={() => onLogin?.('email')} style={{
+        <button onClick={() => onLogin?.('admin')} style={{
           height: 54, borderRadius: 14, border: `1px solid ${AR.border}`,
           background: '#fff', color: AR.ink,
           fontSize: 16, fontWeight: 600,
@@ -103,7 +103,7 @@ export function LoginScreen({ onLogin, loginError }) {
             <path d="M4 7h16v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7z" stroke={AR.ink} strokeWidth="2"/>
             <path d="M4 7l8 6 8-6" stroke={AR.ink} strokeWidth="2"/>
           </svg>
-          이메일로 로그인
+          관리자 로그인
         </button>
         <div style={{ textAlign: 'center', fontSize: 13, color: AR.muted, marginTop: 8 }}>
           처음이신가요? <span style={{ color: AR.blue, fontWeight: 600 }}>회원가입</span>
