@@ -2,6 +2,7 @@ import { DEMO_REPORTS, PLACES, USER_TYPES } from '../data/accessibility';
 import { hasSupabaseConfig, supabase } from './supabase';
 
 const USER_ID_KEY = 'ableRouteUserId';
+const PROFILE_OVERRIDES_KEY = 'ableRouteProfileOverrides';
 
 function createLocalId() {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -26,15 +27,48 @@ export function getKakaoProfileId(kakaoUser) {
   return `kakao-${kakaoUser.id}`;
 }
 
+function getProfileOverrides() {
+  try {
+    return JSON.parse(localStorage.getItem(PROFILE_OVERRIDES_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
+function getProfileOverride(userId) {
+  return getProfileOverrides()[userId] || {};
+}
+
+function saveProfileOverride(userId, profile) {
+  const overrides = getProfileOverrides();
+  overrides[userId] = {
+    ...overrides[userId],
+    ...profile,
+    updated_at: new Date().toISOString(),
+  };
+  localStorage.setItem(PROFILE_OVERRIDES_KEY, JSON.stringify(overrides));
+  return overrides[userId];
+}
+
+function withProfileOverride(profile, userId = profile?.id) {
+  if (!profile || !userId) return profile;
+  return {
+    ...profile,
+    ...getProfileOverride(userId),
+  };
+}
+
 function fallbackProfile(userType = localStorage.getItem('ableRouteUserType') || 'wheelchair', userId = getLocalUserId(), nickname = 'able_user01') {
   const reports = getStoredReports();
+  const profileOverride = getProfileOverride(userId);
   const points = reports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 0);
   return {
     id: userId,
-    nickname,
+    nickname: profileOverride.nickname || nickname,
     user_type: userType,
     points,
     level: Math.max(1, Math.floor(points / 500) + 1),
+    picture: profileOverride.picture || null,
   };
 }
 
@@ -61,7 +95,8 @@ export function getAllReports() {
 
 export async function ensureLocalProfile(userType = 'wheelchair', options = {}) {
   const userId = options.userId || getLocalUserId();
-  const nickname = options.nickname || 'able_user01';
+  const profileOverride = getProfileOverride(userId);
+  const nickname = profileOverride.nickname || options.nickname || 'able_user01';
   localStorage.setItem('ableRouteUserType', userType);
   setLocalUserId(userId);
 
@@ -83,7 +118,7 @@ export async function ensureLocalProfile(userType = 'wheelchair', options = {}) 
     return fallbackProfile(userType, userId, nickname);
   }
 
-  return data;
+  return withProfileOverride(data, userId);
 }
 
 export async function fetchProfile(userId = getLocalUserId(), userType = 'wheelchair') {
@@ -100,7 +135,7 @@ export async function fetchProfile(userId = getLocalUserId(), userType = 'wheelc
     return fallbackProfile(userType, userId);
   }
 
-  return data || ensureLocalProfile(userType, { userId });
+  return data ? withProfileOverride(data, userId) : ensureLocalProfile(userType, { userId });
 }
 
 export async function fetchPlaces() {
@@ -233,6 +268,7 @@ export async function createReport(reportInput) {
 
 export async function updateUserType(userType, userId = getLocalUserId()) {
   localStorage.setItem('ableRouteUserType', userType);
+  const profileOverride = getProfileOverride(userId);
 
   if (!hasSupabaseConfig) return fallbackProfile(userType, userId);
 
@@ -240,7 +276,7 @@ export async function updateUserType(userType, userId = getLocalUserId()) {
     .from('profiles')
     .upsert({
       id: userId,
-      nickname: 'able_user01',
+      nickname: profileOverride.nickname || 'able_user01',
       user_type: userType,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' })
@@ -252,7 +288,34 @@ export async function updateUserType(userType, userId = getLocalUserId()) {
     return fallbackProfile(userType, userId);
   }
 
-  return data;
+  return withProfileOverride(data, userId);
+}
+
+export async function updateProfile(userId = getLocalUserId(), profileInput = {}) {
+  const nickname = profileInput.nickname?.trim() || 'able_user01';
+  const picture = profileInput.picture || null;
+  const profileOverride = saveProfileOverride(userId, { nickname, picture });
+
+  if (!hasSupabaseConfig) {
+    return fallbackProfile(profileInput.user_type, userId, nickname);
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({
+      nickname,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select()
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Supabase profile update fallback:', error.message);
+    return fallbackProfile(profileInput.user_type, userId, nickname);
+  }
+
+  return withProfileOverride(data || { id: userId, nickname }, userId) || profileOverride;
 }
 
 export function getPlaceById(placeId) {

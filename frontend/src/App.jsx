@@ -15,6 +15,7 @@ import {
   getKakaoProfileId,
   getLocalUserId,
   setLocalUserId,
+  updateProfile,
   updateUserType,
 } from './lib/accessibility';
 import { exchangeKakaoCode, startKakaoLogin } from './lib/kakaoAuth';
@@ -170,6 +171,25 @@ export default function App() {
     setProfile(nextProfile);
   }
 
+  async function handleProfileUpdate(profileInput) {
+    const nextProfile = await updateProfile(userId, {
+      ...profileInput,
+      user_type: userType,
+    });
+    setProfile(nextProfile);
+
+    const kakaoUser = getStoredKakaoUser();
+    if (kakaoUser) {
+      localStorage.setItem('ableRouteKakaoUser', JSON.stringify({
+        ...kakaoUser,
+        name: nextProfile.nickname,
+        picture: nextProfile.picture,
+      }));
+    }
+
+    return nextProfile;
+  }
+
   function handleLogin(method = 'demo') {
     if (method === 'kakao') {
       try {
@@ -219,7 +239,7 @@ export default function App() {
           case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;
           case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType} places={places} reports={reports}/>;
           case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType} userId={userId} places={places} reports={reports} onDataChange={refreshData}/>;
-          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} onLogout={handleLogout} profile={profile} reports={reports} userId={userId}/>;
+          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onLogout={handleLogout} onProfileUpdate={handleProfileUpdate} profile={profile} reports={reports} userId={userId}/>;
           default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;
         }
       })();
