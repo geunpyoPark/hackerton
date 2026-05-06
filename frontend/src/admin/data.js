@@ -44,6 +44,9 @@ const REGION_COORDS = {
   영등포구: { x: 340, y: 230 },
   성동구: { x: 590, y: 165 },
   중구: { x: 530, y: 170 },
+  종로구: { x: 490, y: 140 },
+  용산구: { x: 500, y: 210 },
+  노원구: { x: 620, y: 60 },
   기타: { x: 480, y: 320 },
 };
 
@@ -63,7 +66,20 @@ function getIssueLabel(issueType) {
   return ISSUE_LABELS[issueType] || '기타';
 }
 
+// ✅ 주소 기반으로 수정
 function inferRegion(place) {
+  const address = `${place?.address || ''} ${place?.road_address || ''} ${place?.station_name || ''}`;
+  if (address.includes('강남구')) return '강남구';
+  if (address.includes('송파구')) return '송파구';
+  if (address.includes('서초구')) return '서초구';
+  if (address.includes('마포구')) return '마포구';
+  if (address.includes('영등포구')) return '영등포구';
+  if (address.includes('성동구')) return '성동구';
+  if (address.includes('중구')) return '중구';
+  if (address.includes('종로구')) return '종로구';
+  if (address.includes('용산구')) return '용산구';
+  if (address.includes('노원구')) return '노원구';
+
   const text = `${place?.name || ''} ${place?.station_name || ''}`;
   if (text.includes('강남') || text.includes('삼성') || text.includes('코엑스')) return '강남구';
   if (text.includes('잠실') || text.includes('송파')) return '송파구';
@@ -72,7 +88,8 @@ function inferRegion(place) {
   if (text.includes('당산') || text.includes('영등포')) return '영등포구';
   if (text.includes('성동')) return '성동구';
   if (text.includes('서울역') || text.includes('시청') || text.includes('중구')) return '중구';
-  return place?.station_name || '기타';
+
+  return '기타';
 }
 
 function getRisk(report, place) {

@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 import { PLACES, REPORT_TYPES as BASE_REPORT_TYPES } from '../data/accessibility';
-import { createReport, getStoredReports } from '../lib/accessibility';
+import { createCustomPlace, createReport, getStoredReports } from '../lib/accessibility';
 import { classifyReport } from '../lib/ai';
 import { uploadReportImage } from '../lib/cloudinary';
 import { supabase, hasSupabaseConfig } from '../lib/supabase';
+//import { searchKakaoPlace } from '../lib/kakaoPlaces';
+import { resolveKakaoPlaceLocation as searchKakaoPlace } from '../lib/kakaoPlaces';
 
 const REPORT_TYPES = [
   { id: 'elevator_broken', label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
@@ -35,7 +37,12 @@ const ISSUE_LABEL = {
 
 export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, places = PLACES, reports = [], onDataChange }) {
   const [selected, setSelected] = useState(BASE_REPORT_TYPES[0].id);
-  const [placeId, setPlaceId] = useState((places[0] || PLACES[0]).id);
+  const [customPlaceName, setCustomPlaceName] = useState('');
+  const [searchedPlace, setSearchedPlace] = useState(null);
+  const [placeSearchState, setPlaceSearchState] = useState('idle');
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [locationState, setLocationState] = useState('idle');
+  const [locationMessage, setLocationMessage] = useState('');
   const [description, setDescription] = useState('');
   const [imageName, setImageName] = useState('');
   const [imageFile, setImageFile] = useState(null);
@@ -46,8 +53,118 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
   const [loadingReports, setLoadingReports] = useState(false);
 
   const myReportsCount = reports.filter(report => report.user_id === userId).length;
-  const effectivePlaceId = places.some(place => place.id === placeId) ? placeId : (places[0] || PLACES[0]).id;
-  const selectedPlace = places.find(place => place.id === effectivePlaceId) || places[0] || PLACES[0];
+  const selectedPlace = places[0] || PLACES[0];
+  const customName = customPlaceName.trim();
+  const hasCustomPlace = Boolean(searchedPlace || currentLocation);
+  const previewPlace = hasCustomPlace
+    ? {
+        id: 'custom-preview',
+        name: customName || searchedPlace?.name || '현재 위치',
+        line_name: currentLocation ? '현재 위치 좌표' : '장소 검색',
+        station_name: currentLocation
+          ? `${currentLocation.lat.toFixed(5)}, ${currentLocation.lng.toFixed(5)}`
+          : searchedPlace?.station_name || '',
+        exit_no: '',
+        lat: currentLocation?.lat ?? searchedPlace?.lat ?? selectedPlace.lat,
+        lng: currentLocation?.lng ?? searchedPlace?.lng ?? selectedPlace.lng,
+      }
+    : selectedPlace;
+
+  useEffect(() => {
+    if (!customName || customName.length < 2) {
+      return undefined;
+    }
+
+    if (currentLocation && customName === '현재 위치') {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const timer = window.setTimeout(async () => {
+      try {
+        const nextPlace = await searchKakaoPlace(customName);
+        if (cancelled) return;
+
+        setCurrentLocation(null);
+        setSearchedPlace(nextPlace);
+        setPlaceSearchState(nextPlace ? 'ready' : 'empty');
+        setLocationState(nextPlace ? 'ready' : 'error');
+        setLocationMessage(nextPlace
+          ? `${nextPlace.name} 위치를 찾았습니다.`
+          : '검색 결과가 없습니다. 장소명을 더 정확히 입력해주세요.');
+      } catch (error) {
+        if (cancelled) return;
+        setSearchedPlace(null);
+        setPlaceSearchState('error');
+        setLocationState('error');
+        setLocationMessage(error.message || '장소 검색에 실패했습니다.');
+      }
+    }, 500);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [customName, currentLocation]);
+
+  function handleUseCurrentLocation() {
+    if (!navigator.geolocation) {
+      setLocationState('error');
+      setLocationMessage('현재 위치를 사용할 수 없는 브라우저입니다.');
+      return;
+    }
+
+    setLocationState('loading');
+    setLocationMessage('');
+    navigator.geolocation.getCurrentPosition(
+      position => {
+        const nextLocation = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setCurrentLocation(nextLocation);
+        setSearchedPlace(null);
+        setPlaceSearchState('idle');
+        setLocationState('ready');
+        setLocationMessage('현재 위치가 적용되었습니다.');
+        if (!customPlaceName.trim()) setCustomPlaceName('현재 위치');
+      },
+      error => {
+        setLocationState('error');
+        setLocationMessage(error.code === error.PERMISSION_DENIED
+          ? '위치 권한이 거부되었습니다. 장소명을 직접 입력해주세요.'
+          : '현재 위치를 가져오지 못했습니다.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 }
+    );
+  }
+
+  function handlePlaceNameChange(event) {
+    const nextValue = event.target.value.slice(0, 40);
+    setCustomPlaceName(nextValue);
+    setCurrentLocation(null);
+
+    if (nextValue.trim().length < 2) {
+      setSearchedPlace(null);
+      setPlaceSearchState('idle');
+      setLocationState('idle');
+      setLocationMessage('');
+    } else {
+      setPlaceSearchState('loading');
+      setLocationState('idle');
+      setLocationMessage('');
+    }
+  }
+
+  function clearCustomPlace() {
+    setCustomPlaceName('');
+    setSearchedPlace(null);
+    setPlaceSearchState('idle');
+    setCurrentLocation(null);
+    setLocationState('idle');
+    setLocationMessage('');
+  }
 
   async function handleMoreClick() {
     setShowMyReports(prev => !prev);
@@ -86,20 +203,32 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
     try {
       setSubmitState('saving');
       setSubmitMessage('');
+      if (customName && !hasCustomPlace) {
+        throw new Error('장소 검색 결과를 확인한 뒤 제출해주세요.');
+      }
+
       const imageUrl = imageFile ? await uploadReportImage(imageFile) : '';
+      const reportPlace = hasCustomPlace
+        ? await createCustomPlace({
+            name: customName || '현재 위치',
+            lat: previewPlace.lat,
+            lng: previewPlace.lng,
+            fallbackPlaceId: selectedPlace.id,
+          })
+        : selectedPlace;
       const reportInput = {
-        place_id: effectivePlaceId,
+        place_id: reportPlace.id,
         user_id: userId,
         issue_type: selected,
         description: description.trim() || REPORT_TYPES.find(type => type.id === selected)?.label || '접근성 제보',
         image_url: imageUrl,
-        lat: selectedPlace.lat,
-        lng: selectedPlace.lng,
+        lat: reportPlace.lat,
+        lng: reportPlace.lng,
       };
       let classification = null;
 
       try {
-        classification = await classifyReport({ userType, place: selectedPlace, report: reportInput });
+        classification = await classifyReport({ userType, place: reportPlace, report: reportInput });
       } catch (error) {
         console.warn('AI report classification skipped:', error.message);
       }
@@ -109,6 +238,7 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
       setDescription('');
       setImageName('');
       setImageFile(null);
+      clearCustomPlace();
       await onDataChange?.();
       setSubmitState(result.source === 'supabase' ? 'saved' : 'fallback');
       setSubmitMessage(result.source === 'supabase'
@@ -145,18 +275,88 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 20px' }}>
         {/* Place */}
         <Section title="장소 선택">
-          <select value={effectivePlaceId} onChange={event => setPlaceId(event.target.value)} style={{
-            background: '#fff', borderRadius: 12,
-            padding: '12px 14px', border: `1px solid ${AR.border}`,
-            width: '100%', fontSize: 14, color: AR.ink, fontFamily: AR.font,
-          }}>
-            {places.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}
-          </select>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input
+              value={customPlaceName}
+              onChange={handlePlaceNameChange}
+              placeholder="장소명 검색 예: 신논현역"
+              style={{
+                flex: 1,
+                background: '#fff',
+                borderRadius: 12,
+                padding: '0 14px',
+                border: `1px solid ${AR.border}`,
+                height: 44,
+                minWidth: 0,
+                fontSize: 14,
+                color: AR.ink,
+                fontFamily: AR.font,
+                boxSizing: 'border-box',
+              }}
+            />
+            <button
+              onClick={handleUseCurrentLocation}
+              disabled={locationState === 'loading'}
+              style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                border: `1px solid ${locationState === 'ready' ? AR.blue : AR.border}`,
+                background: locationState === 'ready' ? '#EFF4FF' : '#fff',
+                color: locationState === 'ready' ? AR.blue : AR.ink,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+              aria-label="현재 위치 사용"
+              title="현재 위치 사용"
+            >
+              {locationState === 'loading'
+                ? <span style={{ fontSize: 11, fontWeight: 800 }}>...</span>
+                : <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                    <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/>
+                    <circle cx="12" cy="12" r="1.8" fill="currentColor"/>
+                  </svg>
+              }
+            </button>
+          </div>
+          {(locationMessage || hasCustomPlace) && (
+            <div style={{
+              marginBottom: 8,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 8,
+              padding: '8px 10px',
+              borderRadius: 10,
+              background: locationState === 'error' ? AR.redSoft : '#EFF4FF',
+              color: locationState === 'error' ? AR.red : AR.blue,
+              fontSize: 12,
+              fontWeight: 700,
+            }}>
+              <span style={{ lineHeight: 1.35 }}>
+                {placeSearchState === 'loading' ? '장소를 찾는 중입니다.' : (locationMessage || '검색한 장소로 제보합니다.')}
+              </span>
+              {hasCustomPlace && (
+                <button onClick={clearCustomPlace} style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'inherit',
+                  fontSize: 12,
+                  fontWeight: 800,
+                  padding: 0,
+                  flexShrink: 0,
+                }}>초기화</button>
+              )}
+            </div>
+          )}
           <div style={{
-            marginTop: 8, height: 110, borderRadius: 12, overflow: 'hidden',
+            height: 130, borderRadius: 12, overflow: 'hidden',
             position: 'relative', border: `1px solid ${AR.border}`,
           }}>
-            <KakaoMap places={[{ ...selectedPlace, risk: 'red' }]}/>
+            <KakaoMap places={[{ ...previewPlace, risk: 'red' }]}/>
             <div style={{
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -168,14 +368,6 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
                 <circle cx="12" cy="11" r="3.5" fill="#fff"/>
               </svg>
             </div>
-          </div>
-          <div style={{
-            marginTop: 8, padding: '10px 14px',
-            background: '#fff', borderRadius: 12,
-            border: `1px solid ${AR.border}`,
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: AR.ink }}>{selectedPlace.name}</div>
-            <div style={{ fontSize: 12, color: AR.muted, marginTop: 2 }}>{selectedPlace.line_name} · {selectedPlace.station_name} {selectedPlace.exit_no}번 출구</div>
           </div>
         </Section>
 

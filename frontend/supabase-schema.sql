@@ -68,6 +68,8 @@ alter table reports enable row level security;
 drop policy if exists "mvp profiles read" on profiles;
 drop policy if exists "mvp profiles upsert" on profiles;
 drop policy if exists "mvp places read" on places;
+drop policy if exists "mvp places insert" on places;
+drop policy if exists "mvp places update" on places;
 drop policy if exists "mvp reports read" on reports;
 drop policy if exists "mvp reports insert" on reports;
 
@@ -79,6 +81,12 @@ create policy "mvp profiles upsert" on profiles
 
 create policy "mvp places read" on places
   for select using (true);
+
+create policy "mvp places insert" on places
+  for insert with check (true);
+
+create policy "mvp places update" on places
+  for update using (true) with check (true);
 
 create policy "mvp reports read" on reports
   for select using (true);

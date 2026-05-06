@@ -171,6 +171,49 @@ export async function fetchReports() {
   return data?.length ? data : getAllReports();
 }
 
+export async function createCustomPlace(placeInput) {
+  const place = {
+    id: placeInput.id || `custom-${Date.now()}`,
+    name: placeInput.name?.trim() || '현재 위치',
+    station_name: placeInput.station_name || '',
+    line_name: placeInput.line_name || '사용자 제보',
+    exit_no: placeInput.exit_no || '',
+    lat: placeInput.lat,
+    lng: placeInput.lng,
+    has_elevator: false,
+    has_toilet: false,
+    has_escalator: false,
+    has_wheelchair_lift: false,
+    wheelchair_accessible: false,
+    slope_level: 'low',
+    has_stairs: false,
+    has_curb: false,
+    source: 'user',
+    public_data: false,
+    recent_reports_count: 0,
+    last_updated: new Date().toISOString(),
+  };
+
+  if (!hasSupabaseConfig) return place;
+
+  const { data, error } = await supabase
+    .from('places')
+    .upsert(place, { onConflict: 'id' })
+    .select()
+    .single();
+
+  if (error) {
+    console.warn('Supabase custom place fallback:', error.message);
+    return {
+      ...place,
+      id: placeInput.fallbackPlaceId || PLACES[0].id,
+      custom_place_insert_failed: true,
+    };
+  }
+
+  return data;
+}
+
 async function addReportPoints(userId, hasImage) {
   if (!hasSupabaseConfig) return null;
 

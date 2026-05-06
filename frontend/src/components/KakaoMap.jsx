@@ -52,7 +52,6 @@ function loadKakaoMapSdk() {
         reject(new Error('kakao-map-sdk-unavailable'));
         return;
       }
-
       window.kakao.maps.load(() => resolve(window.kakao));
     }
 
@@ -92,9 +91,7 @@ export function KakaoMap({
   ), [places]);
 
   useEffect(() => {
-    if (!KAKAO_MAP_APP_KEY) {
-      return undefined;
-    }
+    if (!KAKAO_MAP_APP_KEY) return undefined;
 
     let canceled = false;
 
@@ -124,6 +121,7 @@ export function KakaoMap({
           : validPlaces
             .filter((place) => !place.type)
             .map((place) => ({ lat: place.lat, lng: place.lng }));
+
         if (routePathOnly.length > 1) {
           new maps.Polyline({
             map,
@@ -139,11 +137,7 @@ export function KakaoMap({
           const position = new maps.LatLng(place.lat, place.lng);
 
           if (!place.type && !place.routeVia) {
-            new maps.Marker({
-              map,
-              position,
-              title: place.name,
-            });
+            new maps.Marker({ map, position, title: place.name });
           }
 
           if (!place.routeVia) {
@@ -211,24 +205,13 @@ async function resolvePlaceLocations(kakao, places) {
   const placeSearch = kakao.maps.services ? new kakao.maps.services.Places() : null;
 
   return Promise.all(places.map(async (place) => {
-    if (typeof place.lat === 'number' && typeof place.lng === 'number') {
-      return place;
-    }
-
-    if (!placeSearch || !place.locationQuery) {
-      return place;
-    }
+    if (typeof place.lat === 'number' && typeof place.lng === 'number') return place;
+    if (!placeSearch || !place.locationQuery) return place;
 
     const coords = await searchPlace(placeSearch, place.locationQuery);
-    if (!coords) {
-      return place;
-    }
+    if (!coords) return place;
 
-    return {
-      ...place,
-      lat: coords.lat,
-      lng: coords.lng,
-    };
+    return { ...place, lat: coords.lat, lng: coords.lng };
   }));
 }
 
@@ -239,11 +222,7 @@ function searchPlace(placeSearch, query) {
         resolve(null);
         return;
       }
-
-      resolve({
-        lat: Number(results[0].y),
-        lng: Number(results[0].x),
-      });
+      resolve({ lat: Number(results[0].y), lng: Number(results[0].x) });
     });
   });
 }
@@ -319,30 +298,20 @@ function FallbackMarkers({ places }) {
           position: 'absolute',
           left: `${18 + index * 22}%`,
           top: `${28 + (index % 2) * 22}%`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: 5,
+          display: 'flex', alignItems: 'center', gap: 5,
         }}>
           <span style={{
-            width: 18,
-            height: 18,
-            borderRadius: 9,
+            width: 18, height: 18, borderRadius: 9,
             background: facilityStyle[place.type]?.color || markerColor[place.risk] || AR.blue,
             border: '2px solid #fff',
             boxShadow: '0 2px 8px rgba(0,0,0,.18)',
           }} />
           <span style={{
-            maxWidth: 92,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            padding: '3px 6px',
-            borderRadius: 7,
-            background: '#fff',
-            border: `1px solid ${AR.border}`,
-            fontSize: 10,
-            fontWeight: 700,
-            color: AR.ink,
+            maxWidth: 92, overflow: 'hidden',
+            textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            padding: '3px 6px', borderRadius: 7,
+            background: '#fff', border: `1px solid ${AR.border}`,
+            fontSize: 10, fontWeight: 700, color: AR.ink,
           }}>{place.name}</span>
         </div>
       ))}
@@ -353,16 +322,10 @@ function FallbackMarkers({ places }) {
 function MapNotice({ children }) {
   return (
     <div style={{
-      position: 'absolute',
-      top: 12,
-      left: 12,
-      zIndex: 2,
-      padding: '6px 9px',
-      borderRadius: 8,
-      background: 'rgba(255,255,255,0.92)',
-      color: AR.ink,
-      fontSize: 11,
-      fontWeight: 700,
+      position: 'absolute', top: 12, left: 12, zIndex: 2,
+      padding: '6px 9px', borderRadius: 8,
+      background: 'rgba(255,255,255,0.92)', color: AR.ink,
+      fontSize: 11, fontWeight: 700,
       boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
     }}>
       {children}
