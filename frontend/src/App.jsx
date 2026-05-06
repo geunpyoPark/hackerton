@@ -11,7 +11,9 @@ import {
   fetchPlaces,
   fetchProfile,
   fetchReports,
+  getKakaoProfileId,
   getLocalUserId,
+  setLocalUserId,
   updateUserType,
 } from './lib/accessibility';
 import { exchangeKakaoCode, startKakaoLogin } from './lib/kakaoAuth';
@@ -23,11 +25,24 @@ function getInitialScreen() {
   return ROUTES.includes(route) ? route : 'login';
 }
 
+function getStoredKakaoUser() {
+  try {
+    return JSON.parse(localStorage.getItem('ableRouteKakaoUser') || 'null');
+  } catch {
+    return null;
+  }
+}
+
+function getInitialUserId() {
+  const kakaoProfileId = getKakaoProfileId(getStoredKakaoUser());
+  return kakaoProfileId || getLocalUserId();
+}
+
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('ableRouteLoggedIn') === 'true');
   const [screen, setScreen] = useState(getInitialScreen);
   const [userType, setUserTypeState] = useState(() => localStorage.getItem('ableRouteUserType') || 'wheelchair');
-  const [userId] = useState(getLocalUserId);
+  const [userId, setUserId] = useState(getInitialUserId);
   const [profile, setProfile] = useState(null);
   const [places, setPlaces] = useState(PLACES);
   const [reports, setReports] = useState(DEMO_REPORTS);
@@ -57,16 +72,15 @@ export default function App() {
         localStorage.setItem('ableRouteLoggedIn', 'true');
         localStorage.setItem('ableRouteLoginMethod', 'kakao');
         localStorage.setItem('ableRouteKakaoUser', JSON.stringify(kakaoUser));
-
-        // ✅ 카카오 유저 정보 profile에 반영
-        setProfile({
-          id: kakaoUser.id,
-          nickname: kakaoUser.name,
-          picture: kakaoUser.picture,
-          user_type: userType,
-          points: 0,
-          level: 1,
+        const nextUserId = getKakaoProfileId(kakaoUser) || getLocalUserId();
+        setLocalUserId(nextUserId);
+        setUserId(nextUserId);
+        const nextProfile = await ensureLocalProfile(userType, {
+          userId: nextUserId,
+          nickname: kakaoUser.name || 'able_user01',
         });
+
+        setProfile({ ...nextProfile, picture: kakaoUser.picture });
 
         setLoggedIn(true);
         setScreen('home');
@@ -87,9 +101,18 @@ export default function App() {
     let cancelled = false;
 
     async function loadInitialData() {
+      if (!loggedIn) {
+        setDataStatus('ready');
+        return;
+      }
+
       setDataStatus('loading');
+      const kakaoUser = getStoredKakaoUser();
       const [nextProfile, nextPlaces, nextReports] = await Promise.all([
-        ensureLocalProfile(userType),
+        ensureLocalProfile(userType, {
+          userId,
+          nickname: kakaoUser?.name || 'able_user01',
+        }),
         fetchPlaces(),
         fetchReports(),
       ]);
@@ -107,11 +130,11 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [userType]);
+  }, [loggedIn, userId, userType]);
 
-  async function refreshData() {
+  async function refreshData(nextUserId = userId, nextUserType = userType) {
     const [nextProfile, nextPlaces, nextReports] = await Promise.all([
-      fetchProfile(userId, userType),
+      fetchProfile(nextUserId, nextUserType),
       fetchPlaces(),
       fetchReports(),
     ]);
@@ -159,6 +182,8 @@ export default function App() {
 
     localStorage.setItem('ableRouteLoggedIn', 'true');
     localStorage.setItem('ableRouteLoginMethod', method);
+    const nextUserId = getLocalUserId();
+    setUserId(nextUserId);
     setLoggedIn(true);
     navigate('home');
   }
