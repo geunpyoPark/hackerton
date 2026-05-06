@@ -1,7 +1,9 @@
+import { useEffect, useMemo, useState } from 'react';
 import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 import { PLACES } from '../data/accessibility';
+import { fetchAccessibilitySummary } from '../lib/ai';
 import {
   buildAccessibilitySummary,
   calculateReliability,
@@ -13,14 +15,57 @@ import {
 
 export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', places = PLACES, reports: allReports = [] }) {
   const mainPlace = places.find(place => place.id === 'gangnam-exit-2') || places[0] || PLACES[0];
-  const reports = filterReportsForPlace(allReports, mainPlace.id);
+  const reports = useMemo(
+    () => filterReportsForPlace(allReports, mainPlace.id),
+    [allReports, mainPlace.id],
+  );
   const reliability = calculateReliability(mainPlace, reports);
-  const summary = buildAccessibilitySummary(mainPlace, reports, userType);
-  const mapPlaces = places.map(place => ({
-    ...place,
-    risk: getRiskLevel(place, filterReportsForPlace(allReports, place.id)),
-  }));
+  const fallbackSummary = useMemo(
+    () => buildAccessibilitySummary(mainPlace, reports, userType),
+    [mainPlace, reports, userType],
+  );
+  const [aiSummary, setAiSummary] = useState(fallbackSummary);
+  const [aiStatus, setAiStatus] = useState('idle');
+  const mapPlaces = useMemo(
+    () => places.map(place => ({
+      ...place,
+      risk: getRiskLevel(place, filterReportsForPlace(allReports, place.id)),
+    })),
+    [allReports, places],
+  );
   const reportCount = reports.length + mainPlace.recent_reports_count;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSummary() {
+      setAiStatus('loading');
+      try {
+        const nextSummary = await fetchAccessibilitySummary({
+          userType,
+          place: mainPlace,
+          reports,
+        });
+        if (!cancelled) {
+          setAiSummary(nextSummary);
+          setAiStatus(nextSummary.source === 'gemini' ? 'gemini' : 'fallback');
+        }
+      } catch {
+        if (!cancelled) {
+          setAiSummary(fallbackSummary);
+          setAiStatus('fallback');
+        }
+      }
+    }
+
+    loadSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [fallbackSummary, mainPlace, reports, userType]);
+
+  const summary = aiSummary || fallbackSummary;
 
   return (
     <div style={{
@@ -154,7 +199,9 @@ export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair', place
                 fontSize: 10, fontWeight: 800,
                 padding: '3px 7px', borderRadius: 5, letterSpacing: '0.04em',
               }}>AI</div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: AR.ink }}>AI 추천 안내</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: AR.ink }}>
+                {aiStatus === 'loading' ? 'AI 추천 안내 생성 중' : 'AI 추천 안내'}
+              </div>
             </div>
             <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.55 }}>
               {summary.oneLine}{' '}

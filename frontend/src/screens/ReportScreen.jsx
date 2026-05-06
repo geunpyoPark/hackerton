@@ -4,6 +4,7 @@ import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 import { PLACES, REPORT_TYPES as BASE_REPORT_TYPES } from '../data/accessibility';
 import { createReport } from '../lib/accessibility';
+import { uploadReportImage } from '../lib/cloudinary';
 
 const REPORT_TYPES = [
   { id: 'elevator_broken', label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
@@ -26,6 +27,7 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
   const [placeId, setPlaceId] = useState((places[0] || PLACES[0]).id);
   const [description, setDescription] = useState('');
   const [imageName, setImageName] = useState('');
+  const [imageFile, setImageFile] = useState(null);
   const [submitState, setSubmitState] = useState('idle');
   const [submitMessage, setSubmitMessage] = useState('');
   const myReportsCount = reports.filter(report => report.user_id === userId).length;
@@ -33,24 +35,32 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
   const selectedPlace = places.find(place => place.id === effectivePlaceId) || places[0] || PLACES[0];
 
   async function handleSubmit() {
-    setSubmitState('saving');
-    const result = await createReport({
-      place_id: effectivePlaceId,
-      user_id: userId,
-      issue_type: selected,
-      description: description.trim() || REPORT_TYPES.find(type => type.id === selected)?.label || '접근성 제보',
-      image_url: imageName ? `local://${imageName}` : '',
-      lat: selectedPlace.lat,
-      lng: selectedPlace.lng,
-    });
+    try {
+      setSubmitState('saving');
+      setSubmitMessage('');
+      const imageUrl = imageFile ? await uploadReportImage(imageFile) : '';
+      const result = await createReport({
+        place_id: effectivePlaceId,
+        user_id: userId,
+        issue_type: selected,
+        description: description.trim() || REPORT_TYPES.find(type => type.id === selected)?.label || '접근성 제보',
+        image_url: imageUrl,
+        lat: selectedPlace.lat,
+        lng: selectedPlace.lng,
+      });
 
-    setDescription('');
-    setImageName('');
-    await onDataChange?.();
-    setSubmitState(result.source === 'supabase' ? 'saved' : 'fallback');
-    setSubmitMessage(result.source === 'supabase'
-      ? '제보가 Supabase에 저장되었습니다.'
-      : 'Supabase 연결이 없어 기기에 임시 저장했습니다.');
+      setDescription('');
+      setImageName('');
+      setImageFile(null);
+      await onDataChange?.();
+      setSubmitState(result.source === 'supabase' ? 'saved' : 'fallback');
+      setSubmitMessage(result.source === 'supabase'
+        ? (imageUrl ? '사진과 제보가 저장되었습니다.' : '제보가 Supabase에 저장되었습니다.')
+        : 'Supabase 연결이 없어 기기에 임시 저장했습니다.');
+    } catch (error) {
+      setSubmitState('error');
+      setSubmitMessage(error.message || '제보 저장 중 오류가 발생했습니다.');
+    }
   }
 
   return (
@@ -151,7 +161,11 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
               </svg>
             </div>
             <div style={{ fontSize: 13, color: AR.muted, fontWeight: 500 }}>{imageName || '사진 추가하기'}</div>
-            <input type="file" accept="image/*" onChange={event => setImageName(event.target.files?.[0]?.name || '')} style={{ display: 'none' }}/>
+            <input type="file" accept="image/*" onChange={event => {
+              const file = event.target.files?.[0] || null;
+              setImageFile(file);
+              setImageName(file?.name || '');
+            }} style={{ display: 'none' }}/>
           </label>
         </Section>
 
@@ -160,8 +174,8 @@ export function ReportScreen({ onNavigate, userId, places = PLACES, reports = []
             marginTop: 6,
             padding: '10px 12px',
             borderRadius: 10,
-            background: submitState === 'saved' ? AR.greenSoft : AR.yellowSoft,
-            color: submitState === 'saved' ? AR.green : AR.yellow,
+            background: submitState === 'saved' ? AR.greenSoft : submitState === 'error' ? AR.redSoft : AR.yellowSoft,
+            color: submitState === 'saved' ? AR.green : submitState === 'error' ? AR.red : AR.yellow,
             fontSize: 13,
             fontWeight: 700,
           }}>{submitMessage}</div>
