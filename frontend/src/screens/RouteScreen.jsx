@@ -1,8 +1,27 @@
 import { AR } from '../design';
-import { FakeMap } from '../components/FakeMap';
+import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
+import { PLACES } from '../data/accessibility';
+import {
+  buildAccessibilitySummary,
+  calculateReliability,
+  formatRelativeDate,
+  getReportsForPlace,
+  getRiskLevel,
+  getUserTypeLabel,
+} from '../lib/accessibility';
 
-export function RouteScreen({ onNavigate, onBack }) {
+export function RouteScreen({ onNavigate, onBack, userType = 'wheelchair' }) {
+  const mainPlace = PLACES[0];
+  const reports = getReportsForPlace(mainPlace.id);
+  const reliability = calculateReliability(mainPlace, reports);
+  const summary = buildAccessibilitySummary(mainPlace, reports, userType);
+  const mapPlaces = PLACES.map(place => ({
+    ...place,
+    risk: getRiskLevel(place, getReportsForPlace(place.id)),
+  }));
+  const reportCount = reports.length + mainPlace.recent_reports_count;
+
   return (
     <div style={{
       width: '100%', height: '100%', background: AR.bg,
@@ -45,7 +64,7 @@ export function RouteScreen({ onNavigate, onBack }) {
               background: '#EFF4FF', color: AR.blue,
               fontSize: 11, fontWeight: 700,
               padding: '4px 8px', borderRadius: 6,
-            }}>휠체어 모드</div>
+            }}>{getUserTypeLabel(userType)} 모드</div>
           </div>
 
           <div style={{
@@ -54,13 +73,13 @@ export function RouteScreen({ onNavigate, onBack }) {
           }}>
             <Stat label="총 거리" value="1.2 km"/>
             <Stat label="예상 시간" value="15분" border/>
-            <Stat label="접근성 점수" value="87%" valueColor={AR.green} border/>
+            <Stat label="접근성 점수" value={`${reliability}%`} valueColor={reliability >= 80 ? AR.green : AR.yellow} border/>
           </div>
         </div>
 
         {/* Map */}
         <div style={{ position: 'relative', height: 280, background: '#E8EEF4', overflow: 'hidden' }}>
-          <FakeMap/>
+          <KakaoMap places={mapPlaces}/>
           <div style={{
             position: 'absolute', top: 12, right: 12,
             width: 38, height: 38, borderRadius: 10,
@@ -93,11 +112,11 @@ export function RouteScreen({ onNavigate, onBack }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <div style={{
                 width: 22, height: 22, borderRadius: 11,
-                background: AR.greenSoft, color: AR.green,
+                background: summary.accessible ? AR.greenSoft : AR.redSoft, color: summary.accessible ? AR.green : AR.red,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 13, fontWeight: 800,
               }}>✓</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: AR.ink }}>휠체어 이동 가능</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: AR.ink }}>{summary.oneLine}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
@@ -111,9 +130,16 @@ export function RouteScreen({ onNavigate, onBack }) {
           {/* Risks card */}
           <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: `1px solid ${AR.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: AR.muted, marginBottom: 10 }}>위험 요소</div>
-            <RiskRow severity="red"    title="2번 출구 엘리베이터 고장" sub="10분 전 제보"/>
+            {reports.slice(0, 3).map(report => (
+              <RiskRow
+                key={report.id}
+                severity={report.issue_type === 'elevator_broken' || report.issue_type === 'blocked' ? 'red' : 'yellow'}
+                title={report.description || '접근성 위험 제보'}
+                sub={`${formatRelativeDate(report.created_at)} 제보`}
+              />
+            ))}
             <div style={{ height: 8 }}/>
-            <RiskRow severity="yellow" title="구간 중간 경사 구간 주의"  sub="이용자 다수 보고됨"/>
+            <RiskRow severity="yellow" title={summary.risks} sub="공공데이터와 사용자 제보 기반"/>
           </div>
 
           {/* AI summary */}
@@ -131,9 +157,8 @@ export function RouteScreen({ onNavigate, onBack }) {
               <div style={{ fontSize: 13, fontWeight: 700, color: AR.ink }}>AI 추천 안내</div>
             </div>
             <div style={{ fontSize: 14, color: '#334155', lineHeight: 1.55 }}>
-              2번 출구는 엘리베이터 고장 제보가 있어,{' '}
-              <span style={{ color: AR.green, fontWeight: 700 }}>4번 출구 이용을 추천합니다.</span>{' '}
-              4번 출구는 경사로가 있지만 휠체어로 안전하게 통과 가능합니다.
+              {summary.oneLine}{' '}
+              <span style={{ color: summary.accessible ? AR.green : AR.red, fontWeight: 700 }}>{summary.action}</span>
             </div>
           </div>
 
@@ -141,17 +166,17 @@ export function RouteScreen({ onNavigate, onBack }) {
           <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: `1px solid ${AR.border}` }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
               <div style={{ fontSize: 13, fontWeight: 700, color: AR.muted }}>접근성 신뢰도</div>
-              <div style={{ fontSize: 11, color: AR.muted }}>최근 제보 14건 · 2일 전 업데이트</div>
+              <div style={{ fontSize: 11, color: AR.muted }}>최근 제보 {reportCount}건 · {formatRelativeDate(mainPlace.last_updated)} 업데이트</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
-              <div style={{ fontSize: 32, fontWeight: 800, color: AR.green, letterSpacing: '-0.02em' }}>87</div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: AR.green }}>%</div>
-              <div style={{ marginLeft: 'auto', fontSize: 12, color: AR.green, fontWeight: 600 }}>높음</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: reliability >= 80 ? AR.green : AR.yellow, letterSpacing: '-0.02em' }}>{reliability}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: reliability >= 80 ? AR.green : AR.yellow }}>%</div>
+              <div style={{ marginLeft: 'auto', fontSize: 12, color: reliability >= 80 ? AR.green : AR.yellow, fontWeight: 600 }}>{reliability >= 80 ? '높음' : '주의'}</div>
             </div>
             <div style={{ height: 8, background: AR.bg, borderRadius: 4, overflow: 'hidden' }}>
               <div style={{
-                width: '87%', height: '100%',
-                background: `linear-gradient(90deg, ${AR.green} 0%, #34D399 100%)`,
+                width: `${reliability}%`, height: '100%',
+                background: `linear-gradient(90deg, ${reliability >= 80 ? AR.green : AR.yellow} 0%, #34D399 100%)`,
                 borderRadius: 4,
               }}/>
             </div>

@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { AR } from '../design';
-import { FakeMap } from '../components/FakeMap';
+import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
+import { PLACES, REPORT_TYPES as BASE_REPORT_TYPES } from '../data/accessibility';
+import { getStoredReports, saveStoredReport } from '../lib/accessibility';
 
 const REPORT_TYPES = [
-  { id: 'elev',  label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
-  { id: 'stair', label: '계단 위험',       color: 'yellow', icon: 'stair' },
-  { id: 'bump',  label: '턱 있음',         color: 'yellow', icon: 'bump' },
-  { id: 'slope', label: '경사 심함',       color: 'purple', icon: 'slope' },
-  { id: 'const', label: '공사 중',         color: 'gray',   icon: 'const' },
-  { id: 'etc',   label: '기타',            color: 'gray',   icon: 'etc' },
+  { id: 'elevator_broken', label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
+  { id: 'stairs',          label: '계단 있음',       color: 'yellow', icon: 'stair' },
+  { id: 'curb',            label: '턱 있음',         color: 'yellow', icon: 'bump' },
+  { id: 'steep_slope',     label: '급경사',          color: 'purple', icon: 'slope' },
+  { id: 'construction',    label: '공사 중',         color: 'gray',   icon: 'const' },
+  { id: 'blocked',         label: '통행 불가',       color: 'gray',   icon: 'etc' },
 ];
 
 const PALETTE = {
@@ -20,7 +22,34 @@ const PALETTE = {
 };
 
 export function ReportScreen({ onNavigate }) {
-  const [selected, setSelected] = useState('elev');
+  const [selected, setSelected] = useState(BASE_REPORT_TYPES[0].id);
+  const [placeId, setPlaceId] = useState(PLACES[0].id);
+  const [description, setDescription] = useState('');
+  const [imageName, setImageName] = useState('');
+  const [submitted, setSubmitted] = useState(false);
+  const [myReportsCount, setMyReportsCount] = useState(() => getStoredReports().length);
+  const selectedPlace = PLACES.find(place => place.id === placeId) || PLACES[0];
+
+  function handleSubmit() {
+    const report = {
+      id: `local-${Date.now()}`,
+      place_id: placeId,
+      user_id: 'local-user',
+      issue_type: selected,
+      description: description.trim() || REPORT_TYPES.find(type => type.id === selected)?.label || '접근성 제보',
+      image_url: imageName ? `local://${imageName}` : '',
+      lat: selectedPlace.lat,
+      lng: selectedPlace.lng,
+      created_at: new Date().toISOString(),
+      status: 'active',
+      verified_count: 0,
+    };
+    saveStoredReport(report);
+    setSubmitted(true);
+    setDescription('');
+    setImageName('');
+    setMyReportsCount(getStoredReports().length);
+  }
 
   return (
     <div style={{
@@ -45,22 +74,18 @@ export function ReportScreen({ onNavigate }) {
       <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px 20px' }}>
         {/* Place */}
         <Section title="장소 선택">
-          <div style={{
+          <select value={placeId} onChange={event => setPlaceId(event.target.value)} style={{
             background: '#fff', borderRadius: 12,
             padding: '12px 14px', border: `1px solid ${AR.border}`,
-            display: 'flex', alignItems: 'center', gap: 8,
+            width: '100%', fontSize: 14, color: AR.ink, fontFamily: AR.font,
           }}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
-              <circle cx="11" cy="11" r="7" stroke={AR.muted} strokeWidth="2"/>
-              <path d="M16 16l5 5" stroke={AR.muted} strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-            <div style={{ fontSize: 14, color: AR.muted }}>장소 검색 또는 지도에서 선택</div>
-          </div>
+            {PLACES.map(place => <option key={place.id} value={place.id}>{place.name}</option>)}
+          </select>
           <div style={{
             marginTop: 8, height: 110, borderRadius: 12, overflow: 'hidden',
             position: 'relative', border: `1px solid ${AR.border}`,
           }}>
-            <FakeMap/>
+            <KakaoMap places={[{ ...selectedPlace, risk: 'red' }]}/>
             <div style={{
               position: 'absolute', inset: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -78,8 +103,8 @@ export function ReportScreen({ onNavigate }) {
             background: '#fff', borderRadius: 12,
             border: `1px solid ${AR.border}`,
           }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: AR.ink }}>강남역 2번 출구</div>
-            <div style={{ fontSize: 12, color: AR.muted, marginTop: 2 }}>서울 강남구 강남대로 396</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: AR.ink }}>{selectedPlace.name}</div>
+            <div style={{ fontSize: 12, color: AR.muted, marginTop: 2 }}>{selectedPlace.line_name} · {selectedPlace.station_name} {selectedPlace.exit_no}번 출구</div>
           </div>
         </Section>
 
@@ -94,26 +119,24 @@ export function ReportScreen({ onNavigate }) {
 
         {/* Details */}
         <Section title="상세 내용">
-          <div style={{
+          <textarea value={description} onChange={event => setDescription(event.target.value.slice(0, 200))} placeholder="상세 내용을 입력해주세요. (최대 200자)" style={{
             background: '#fff', borderRadius: 12,
             border: `1px solid ${AR.border}`,
             padding: '12px 14px', minHeight: 100,
-            display: 'flex', flexDirection: 'column',
-          }}>
-            <div style={{ fontSize: 14, color: AR.muted, flex: 1 }}>
-              상세 내용을 입력해주세요. (최대 200자)
-            </div>
-            <div style={{ fontSize: 11, color: AR.muted, textAlign: 'right' }}>0/200</div>
-          </div>
+            width: '100%', resize: 'none', outline: 'none',
+            fontSize: 14, color: AR.ink,
+          }}/>
+          <div style={{ fontSize: 11, color: AR.muted, textAlign: 'right', marginTop: 4 }}>{description.length}/200</div>
         </Section>
 
         {/* Photo */}
         <Section title="사진 첨부 (선택)">
-          <div style={{
+          <label style={{
             background: '#fff',
             border: `1.5px dashed ${AR.borderStrong}`,
             borderRadius: 12, padding: '20px',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+            cursor: 'pointer',
           }}>
             <div style={{
               width: 44, height: 44, borderRadius: 22,
@@ -125,11 +148,24 @@ export function ReportScreen({ onNavigate }) {
                 <circle cx="12" cy="14" r="3.5" stroke="currentColor" strokeWidth="2"/>
               </svg>
             </div>
-            <div style={{ fontSize: 13, color: AR.muted, fontWeight: 500 }}>사진 추가하기</div>
-          </div>
+            <div style={{ fontSize: 13, color: AR.muted, fontWeight: 500 }}>{imageName || '사진 추가하기'}</div>
+            <input type="file" accept="image/*" onChange={event => setImageName(event.target.files?.[0]?.name || '')} style={{ display: 'none' }}/>
+          </label>
         </Section>
 
-        <button style={{
+        {submitted && (
+          <div style={{
+            marginTop: 6,
+            padding: '10px 12px',
+            borderRadius: 10,
+            background: AR.greenSoft,
+            color: AR.green,
+            fontSize: 13,
+            fontWeight: 700,
+          }}>제보가 기기에 저장되었습니다. MVP에서는 localStorage에 저장됩니다.</div>
+        )}
+
+        <button onClick={handleSubmit} style={{
           marginTop: 16, width: '100%', height: 54,
           background: AR.blue, color: '#fff',
           border: 'none', borderRadius: 14,
@@ -149,7 +185,7 @@ export function ReportScreen({ onNavigate }) {
           border: `1px solid ${AR.border}`,
           display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
         }}>
-          <Mini label="내 제보" value="14건"/>
+          <Mini label="내 제보" value={`${myReportsCount}건`}/>
           <Mini label="채택률" value="92%" highlight/>
           <Mini label="도움 받은 사용자" value="82명"/>
         </div>
