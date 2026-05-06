@@ -17,12 +17,21 @@ export function getLocalUserId() {
   return userId;
 }
 
-function fallbackProfile(userType = localStorage.getItem('ableRouteUserType') || 'wheelchair') {
+export function setLocalUserId(userId) {
+  localStorage.setItem(USER_ID_KEY, userId);
+}
+
+export function getKakaoProfileId(kakaoUser) {
+  if (!kakaoUser?.id) return null;
+  return `kakao-${kakaoUser.id}`;
+}
+
+function fallbackProfile(userType = localStorage.getItem('ableRouteUserType') || 'wheelchair', userId = getLocalUserId(), nickname = 'able_user01') {
   const reports = getStoredReports();
   const points = reports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 0);
   return {
-    id: getLocalUserId(),
-    nickname: 'able_user01',
+    id: userId,
+    nickname,
     user_type: userType,
     points,
     level: Math.max(1, Math.floor(points / 500) + 1),
@@ -50,17 +59,19 @@ export function getAllReports() {
   return [...getStoredReports(), ...DEMO_REPORTS];
 }
 
-export async function ensureLocalProfile(userType = 'wheelchair') {
-  const userId = getLocalUserId();
+export async function ensureLocalProfile(userType = 'wheelchair', options = {}) {
+  const userId = options.userId || getLocalUserId();
+  const nickname = options.nickname || 'able_user01';
   localStorage.setItem('ableRouteUserType', userType);
+  setLocalUserId(userId);
 
-  if (!hasSupabaseConfig) return fallbackProfile(userType);
+  if (!hasSupabaseConfig) return fallbackProfile(userType, userId, nickname);
 
   const { data, error } = await supabase
     .from('profiles')
     .upsert({
       id: userId,
-      nickname: 'able_user01',
+      nickname,
       user_type: userType,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'id' })
@@ -69,14 +80,14 @@ export async function ensureLocalProfile(userType = 'wheelchair') {
 
   if (error) {
     console.warn('Supabase profile fallback:', error.message);
-    return fallbackProfile(userType);
+    return fallbackProfile(userType, userId, nickname);
   }
 
   return data;
 }
 
 export async function fetchProfile(userId = getLocalUserId(), userType = 'wheelchair') {
-  if (!hasSupabaseConfig) return fallbackProfile(userType);
+  if (!hasSupabaseConfig) return fallbackProfile(userType, userId);
 
   const { data, error } = await supabase
     .from('profiles')
@@ -86,10 +97,10 @@ export async function fetchProfile(userId = getLocalUserId(), userType = 'wheelc
 
   if (error) {
     console.warn('Supabase profile fetch fallback:', error.message);
-    return fallbackProfile(userType);
+    return fallbackProfile(userType, userId);
   }
 
-  return data || ensureLocalProfile(userType);
+  return data || ensureLocalProfile(userType, { userId });
 }
 
 export async function fetchPlaces() {
@@ -199,7 +210,7 @@ export async function createReport(reportInput) {
 export async function updateUserType(userType, userId = getLocalUserId()) {
   localStorage.setItem('ableRouteUserType', userType);
 
-  if (!hasSupabaseConfig) return fallbackProfile(userType);
+  if (!hasSupabaseConfig) return fallbackProfile(userType, userId);
 
   const { data, error } = await supabase
     .from('profiles')
@@ -214,7 +225,7 @@ export async function updateUserType(userType, userId = getLocalUserId()) {
 
   if (error) {
     console.warn('Supabase user type fallback:', error.message);
-    return fallbackProfile(userType);
+    return fallbackProfile(userType, userId);
   }
 
   return data;

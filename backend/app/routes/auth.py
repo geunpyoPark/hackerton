@@ -13,12 +13,6 @@ async def kakao_login(body: KakaoCode):
     if not settings.kakao_client_id:
         raise HTTPException(status_code=500, detail="카카오 REST API 키가 설정되지 않았습니다")
 
-    # ✅ 디버그 로그
-    print("사용 중인 키:", settings.kakao_client_id)
-    print("사용 중인 시크릿:", settings.kakao_client_secret[:5], "...")
-    print("사용 중인 URI:", settings.KAKAO_REDIRECT_URI)
-    print("받은 코드:", body.code[:20], "...")
-
     # 1. 인가코드 → 액세스토큰
     async with httpx.AsyncClient() as client:
         token_res = await client.post(
@@ -34,7 +28,6 @@ async def kakao_login(body: KakaoCode):
         )
     
     token_data = token_res.json()
-    print("✅ 카카오 토큰 응답:", token_data)
     
     access_token = token_data.get("access_token")
     
@@ -49,7 +42,6 @@ async def kakao_login(body: KakaoCode):
         )
     
     user_data = user_res.json()
-    print("✅ 카카오 유저 정보:", user_data)
     
     kakao_account = user_data.get("kakao_account", {})
     profile = kakao_account.get("profile", {})
