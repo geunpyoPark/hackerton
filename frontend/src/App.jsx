@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AR } from './design';
 import { LoginScreen } from './screens/LoginScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -14,16 +14,17 @@ import {
   getLocalUserId,
   updateUserType,
 } from './lib/accessibility';
+import { exchangeKakaoCode, startKakaoLogin } from './lib/kakaoAuth';
 
 const ROUTES = ['login', 'home', 'route', 'report', 'profile'];
 
 function getInitialScreen() {
-  const route = window.location.pathname.replace('/', '') || 'home';
-  return ROUTES.includes(route) ? route : 'home';
+  const route = window.location.pathname.replace('/', '') || 'login';
+  return ROUTES.includes(route) ? route : 'login';
 }
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('ableRouteLoggedIn') === 'true');
+  const [loggedIn, setLoggedIn] = useState(false);
   const [screen, setScreen] = useState(getInitialScreen);
   const [userType, setUserTypeState] = useState(() => localStorage.getItem('ableRouteUserType') || 'wheelchair');
   const [userId] = useState(getLocalUserId);
@@ -31,13 +32,56 @@ export default function App() {
   const [places, setPlaces] = useState(PLACES);
   const [reports, setReports] = useState(DEMO_REPORTS);
   const [dataStatus, setDataStatus] = useState('loading');
+  const [loginError, setLoginError] = useState('');
   const [, setHistory] = useState([]);
+  const kakaoLoginCalled = useRef(false); // ✅ 중복 호출 방지
 
   useEffect(() => {
     const onPopState = () => setScreen(getInitialScreen());
     window.addEventListener('popstate', onPopState);
     return () => window.removeEventListener('popstate', onPopState);
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+
+    if (!code) return;
+    if (kakaoLoginCalled.current) return; // ✅ 이미 호출됐으면 무시
+    kakaoLoginCalled.current = true; // ✅ 호출 표시
+
+    async function completeKakaoLogin() {
+      try {
+        const kakaoUser = await exchangeKakaoCode(code);
+
+        localStorage.setItem('ableRouteLoggedIn', 'true');
+        localStorage.setItem('ableRouteLoginMethod', 'kakao');
+        localStorage.setItem('ableRouteKakaoUser', JSON.stringify(kakaoUser));
+
+        // ✅ 카카오 유저 정보 profile에 반영
+        setProfile({
+          id: kakaoUser.id,
+          nickname: kakaoUser.name,
+          picture: kakaoUser.picture,
+          user_type: userType,
+          points: 0,
+          level: 1,
+        });
+
+        setLoggedIn(true);
+        setScreen('home');
+        setLoginError('');
+        window.history.replaceState({}, '', '/home');
+      } catch (error) {
+        setLoggedIn(false);
+        setScreen('login');
+        setLoginError(error.message);
+        window.history.replaceState({}, '', '/login');
+      }
+    }
+
+    completeKakaoLogin();
+  }, [userType]);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +147,16 @@ export default function App() {
   }
 
   function handleLogin(method = 'demo') {
+    if (method === 'kakao') {
+      try {
+        setLoginError('');
+        startKakaoLogin();
+      } catch (error) {
+        setLoginError(error.message);
+      }
+      return;
+    }
+
     localStorage.setItem('ableRouteLoggedIn', 'true');
     localStorage.setItem('ableRouteLoginMethod', method);
     setLoggedIn(true);
@@ -111,12 +165,15 @@ export default function App() {
 
   function handleLogout() {
     localStorage.removeItem('ableRouteLoggedIn');
+    localStorage.removeItem('ableRouteLoginMethod');
+    localStorage.removeItem('ableRouteKakaoUser'); // ✅ 추가
     setLoggedIn(false);
+    setProfile(null); // ✅ 추가
     navigate('login');
   }
 
-  const screenEl = !loggedIn
-    ? <LoginScreen onLogin={handleLogin}/>
+  const screenEl = !loggedIn || screen === 'login'
+    ? <LoginScreen onLogin={handleLogin} loginError={loginError}/>
     : (() => {
         switch (screen) {
           case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} places={places} reports={reports} dataStatus={dataStatus}/>;

@@ -8,6 +8,7 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
   const points = profile?.points ?? myReports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 0);
   const level = profile?.level ?? Math.max(1, Math.floor(points / 500) + 1);
   const nickname = profile?.nickname || 'able_user01';
+  const picture = profile?.picture || null; // ✅ 카카오 프로필 사진
 
   return (
     <div style={{
@@ -36,11 +37,16 @@ export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeC
               background: 'linear-gradient(135deg, #DBEAFE, #EDE9FE)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               border: `2px solid ${AR.border}`,
+              overflow: 'hidden',
             }}>
-              <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
-                <circle cx="16" cy="12" r="5" fill="#94A3B8"/>
-                <path d="M5 28c1-6 6-9 11-9s10 3 11 9" fill="#94A3B8"/>
-              </svg>
+              {/* ✅ 카카오 프로필 사진 있으면 보여주기 */}
+              {picture
+                ? <img src={picture} alt="프로필" style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+                : <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+                    <circle cx="16" cy="12" r="5" fill="#94A3B8"/>
+                    <path d="M5 28c1-6 6-9 11-9s10 3 11 9" fill="#94A3B8"/>
+                  </svg>
+              }
             </div>
             <div style={{
               position: 'absolute', bottom: -2, right: -2,

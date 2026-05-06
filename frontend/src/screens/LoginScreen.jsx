@@ -1,7 +1,7 @@
 import { AR } from '../design';
 import { AppLogo } from '../components/Icons';
 
-export function LoginScreen({ onLogin }) {
+export function LoginScreen({ onLogin, loginError }) {
   return (
     <div style={{
       width: '100%', height: '100%',
@@ -67,6 +67,19 @@ export function LoginScreen({ onLogin }) {
 
       {/* Login buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {loginError && (
+          <div style={{
+            padding: '10px 12px',
+            borderRadius: 12,
+            background: '#FEF2F2',
+            color: '#B91C1C',
+            fontSize: 13,
+            lineHeight: 1.4,
+            border: '1px solid #FECACA',
+          }}>
+            {loginError}
+          </div>
+        )}
         <button onClick={() => onLogin?.('kakao')} style={{
           height: 54, borderRadius: 14, border: 'none',
           background: '#FEE500', color: '#191919',
