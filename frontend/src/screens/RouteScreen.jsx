@@ -61,6 +61,8 @@ export function RouteScreen({
   const [walkingError, setWalkingError] = useState('');
   const [walkingEndpoints, setWalkingEndpoints] = useState(null);
   const [selectedRouteRiskId, setSelectedRouteRiskId] = useState(null);
+  const [showTransitMap, setShowTransitMap] = useState(false);
+  const [transitEndpoints, setTransitEndpoints] = useState(null);
   const fromName = routeQuery?.from || '강남역';
   const toName = routeQuery?.to || '코엑스';
   const fromStation = normalizeStationName(fromName);
@@ -130,6 +132,34 @@ export function RouteScreen({
     [routeRiskReports],
   );
   const mapPlaces = [...routePlaces, ...visibleFacilities, ...routeRiskMarkers];
+
+  const transitMapPlaces = useMemo(() => {
+    if (!transitEndpoints) return [];
+    return [
+      { id: 'tr-start', name: fromName, ...transitEndpoints.from, risk: 'green', routeRole: 'start' },
+      { id: 'tr-end', name: toName, ...transitEndpoints.to, risk: 'green', routeRole: 'end' },
+    ];
+  }, [transitEndpoints, fromName, toName]);
+
+  const transitMapSegments = useMemo(() => {
+    if (!odsayRoute || !transitEndpoints) return [];
+    const segs = [];
+    const firstStation = odsayRoute.stations?.[0];
+    const lastStation = odsayRoute.stations?.[odsayRoute.stations.length - 1];
+    const subwayPath = odsayRoute.subPaths?.find(s => s.type === 1);
+    const lineColor = subwayPath ? getLineColor(subwayPath.lineName) : '#2563EB';
+
+    if (firstStation?.lat && firstStation?.lng) {
+      segs.push({ path: [transitEndpoints.from, { lat: firstStation.lat, lng: firstStation.lng }], color: '#94A3B8', style: 'dot', weight: 3 });
+    }
+    if (odsayRoute.polyline?.length > 1) {
+      segs.push({ path: odsayRoute.polyline, color: lineColor, style: 'solid', weight: 5 });
+    }
+    if (lastStation?.lat && lastStation?.lng) {
+      segs.push({ path: [{ lat: lastStation.lat, lng: lastStation.lng }, transitEndpoints.to], color: '#94A3B8', style: 'dot', weight: 3 });
+    }
+    return segs;
+  }, [odsayRoute, transitEndpoints]);
   const hasRouteRisk = routeMode === 'walk' && routeRiskReports.length > 0;
   const routeScore = hasRouteRisk
     ? Math.max(30, reliability - routeRiskReports.length * 18)
@@ -149,59 +179,49 @@ export function RouteScreen({
     let canceled = false;
 
     if (routeMode !== 'transit') {
-      queueMicrotask(() => {
-        if (canceled) return;
-        setOdsayRoute(null);
-        setRouteStatus('idle');
-        setRouteError('');
-      });
-      return () => {
-        canceled = true;
-      };
-    }
-
-    const from = STATION_COORDS[fromStation];
-    const destinationStation = toStation === '코엑스' ? '삼성' : toStation;
-    const to = STATION_COORDS[destinationStation];
-
-    queueMicrotask(() => {
-      if (canceled) return;
       setOdsayRoute(null);
+      setRouteStatus('idle');
       setRouteError('');
-    });
-
-    if (!from || !to) {
-      queueMicrotask(() => {
-        if (canceled) return;
-        setRouteStatus('fallback');
-        setRouteError('역 좌표가 아직 등록되지 않아 임시 경로를 표시 중입니다.');
-      });
-      return () => {
-        canceled = true;
-      };
+      return () => { canceled = true; };
     }
 
-    queueMicrotask(() => {
+    setOdsayRoute(null);
+    setRouteError('');
+    setRouteStatus('loading');
+
+    async function loadTransitRoute() {
+      const [from, to] = await Promise.all([
+        resolveRouteEndpointCoords(fromName, fromStation),
+        resolveRouteEndpointCoords(toName, toStation),
+      ]);
+
       if (canceled) return;
-      setRouteStatus('loading');
-    });
-    searchSubwayRoute({ from, to })
-      .then((result) => {
+
+      if (!from || !to) {
+        setRouteStatus('fallback');
+        setRouteError('좌표를 찾을 수 없어 경로를 표시할 수 없습니다.');
+        return;
+      }
+
+      setTransitEndpoints({ from, to });
+
+      try {
+        const result = await searchSubwayRoute({ from, to });
         if (canceled) return;
         setOdsayRoute(result);
         setRouteStatus('ready');
-      })
-      .catch((error) => {
+      } catch (error) {
         if (canceled) return;
         console.error('ODsay route failed:', error);
         setRouteStatus('fallback');
         setRouteError('ODsay 연결 전이라 임시 지하철 경로를 표시 중입니다.');
-      });
+      }
+    }
 
-    return () => {
-      canceled = true;
-    };
-  }, [fromStation, toStation, routeMode]);
+    loadTransitRoute();
+
+    return () => { canceled = true; };
+  }, [fromName, fromStation, toName, toStation, routeMode]);
 
   useEffect(() => {
     let canceled = false;
@@ -359,151 +379,83 @@ export function RouteScreen({
           </div>
         </div>
 
-        {/* Map */}
-        <div style={{ position: 'relative', height: 280, background: '#E8EEF4', overflow: 'hidden' }}>
-          <KakaoMap
-            places={mapPlaces}
-            routePath={mapRoutePath}
-            disableFallbackRoute={routeMode === 'walk' && !walkingRoute?.path?.length}
-            onPlaceClick={handleMapPlaceClick}
-          />
-          <div style={{
-            position: 'absolute', top: 12, right: 12,
-            width: 38, height: 38, borderRadius: 10,
-            background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <path d="M12 2L3 7v10l9 5 9-5V7l-9-5zM12 2v20M3 7l9 5 9-5" stroke={AR.ink} strokeWidth="1.6"/>
-            </svg>
-          </div>
-          <div style={{
-            position: 'absolute', bottom: 12, right: 12,
-            width: 38, height: 38, borderRadius: 19,
-            background: AR.blue, boxShadow: '0 4px 12px rgba(37,99,235,0.32)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <circle cx="12" cy="12" r="3" fill="#fff"/>
-              <circle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2"/>
-              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
-            </svg>
-          </div>
-          {selectedRouteRisk && (
-            <RouteRiskDetail
-              report={selectedRouteRisk}
-              onClose={() => setSelectedRouteRiskId(null)}
+        {/* Map (도보) / 대중교통 카드 */}
+        {routeMode === 'walk' ? (
+          <div style={{ position: 'relative', height: 280, background: '#E8EEF4', overflow: 'hidden' }}>
+            <KakaoMap
+              places={mapPlaces}
+              routePath={mapRoutePath}
+              disableFallbackRoute={!walkingRoute?.path?.length}
+              onPlaceClick={handleMapPlaceClick}
             />
-          )}
-          {routeMode === 'walk' && !selectedRouteRisk && (
             <div style={{
-              position: 'absolute',
-              left: 12,
-              bottom: 12,
-              maxWidth: 260,
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.94)',
-              color: AR.ink,
-              padding: '6px 9px',
-              fontSize: 11,
-              fontWeight: 700,
-              boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
+              position: 'absolute', top: 12, right: 12,
+              width: 38, height: 38, borderRadius: 10,
+              background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              {walkingStatus === 'loading'
-                ? 'TMAP 도보 경로 불러오는 중'
-                : walkingStatus === 'ready'
-                ? 'TMAP 도보 길찾기 경로를 표시합니다.'
-                : walkingError || '도보 모드: 지도에 보행 경로를 표시합니다.'}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L3 7v10l9 5 9-5V7l-9-5zM12 2v20M3 7l9 5 9-5" stroke={AR.ink} strokeWidth="1.6"/>
+              </svg>
             </div>
-          )}
-          {routeMode === 'transit' && routeStatus !== 'ready' && (
             <div style={{
-              position: 'absolute',
-              left: 12,
-              bottom: 12,
-              maxWidth: 250,
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.94)',
-              color: AR.ink,
-              padding: '6px 9px',
-              fontSize: 11,
-              fontWeight: 700,
-              boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
+              position: 'absolute', bottom: 12, right: 12,
+              width: 38, height: 38, borderRadius: 19,
+              background: AR.blue, boxShadow: '0 4px 12px rgba(37,99,235,0.32)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>
-              {routeStatus === 'loading' ? '대중교통 경로 불러오는 중' : routeError}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="3" fill="#fff"/>
+                <circle cx="12" cy="12" r="9" stroke="#fff" strokeWidth="2"/>
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#fff" strokeWidth="2" strokeLinecap="round"/>
+              </svg>
             </div>
-          )}
-        </div>
-
-        <div style={{
-          background: '#fff',
-          padding: '10px 16px 12px',
-          borderBottom: `1px solid ${AR.border}`,
-        }}>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2 }}>
-            {FACILITY_LAYERS.map(layer => {
-              const active = activeFacilityType === layer.type;
-              return (
-                <button
-                  key={layer.type}
-                  type="button"
-                  onClick={() => handleFacilityLayerClick(layer.type)}
-                  title={layer.api}
-                  style={{
-                    flexShrink: 0,
-                    border: `1px solid ${active ? AR.blue : AR.border}`,
-                    background: active ? '#EFF4FF' : '#fff',
-                    color: active ? AR.blue : AR.ink,
-                    borderRadius: 999,
-                    padding: '8px 11px',
-                    fontSize: 12,
-                    fontWeight: 700,
-                    fontFamily: AR.font,
-                    boxShadow: active ? '0 2px 8px rgba(37,99,235,0.12)' : 'none',
-                  }}
-                >
-                  {layer.label}
-                </button>
-              );
-            })}
+            {selectedRouteRisk && (
+              <RouteRiskDetail
+                report={selectedRouteRisk}
+                onClose={() => setSelectedRouteRiskId(null)}
+              />
+            )}
+            {!selectedRouteRisk && (
+              <div style={{
+                position: 'absolute', left: 12, bottom: 12, maxWidth: 260,
+                borderRadius: 8, background: 'rgba(255,255,255,0.94)',
+                color: AR.ink, padding: '6px 9px', fontSize: 11, fontWeight: 700,
+                boxShadow: '0 2px 8px rgba(15,23,42,0.12)',
+              }}>
+                {walkingStatus === 'loading'
+                  ? 'TMAP 도보 경로 불러오는 중'
+                  : walkingStatus === 'ready'
+                  ? 'TMAP 도보 길찾기 경로를 표시합니다.'
+                  : walkingError || '도보 모드: 지도에 보행 경로를 표시합니다.'}
+              </div>
+            )}
           </div>
-          {activeFacilityType && (
-            <div style={{ marginTop: 8, fontSize: 11, color: AR.muted, fontWeight: 600 }}>
-              {visibleFacilities.length > 0
-                ? `${visibleFacilities.length}건 표시`
-                : '아직 연결된 데이터가 없습니다'}
-            </div>
-          )}
-        </div>
+        ) : (
+          <>
+            <TransitView
+              odsayRoute={odsayRoute}
+              routeStatus={routeStatus}
+              routeError={routeError}
+              fromStation={fromStation}
+              toStation={toStation}
+              userType={userType}
+              onBarClick={() => setShowTransitMap(v => !v)}
+            />
+            {showTransitMap && (
+              <div style={{ height: 260, position: 'relative', overflow: 'hidden' }}>
+                <KakaoMap
+                  places={transitMapPlaces}
+                  routeSegments={transitMapSegments}
+                  disableFallbackRoute
+                />
+              </div>
+            )}
+          </>
+        )}
 
         {/* Detail cards */}
         <div style={{ padding: '14px 16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {/* Route summary card */}
-          <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: `1px solid ${AR.border}` }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: AR.muted, marginBottom: 10 }}>추천 경로 요약</div>
-            <div style={{ fontSize: 12, color: AR.muted, fontWeight: 700, marginBottom: 8, lineHeight: 1.45 }}>
-              {routeSummaryText}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: 11,
-                background: routeRecommendation.accessible ? AR.greenSoft : AR.redSoft, color: routeRecommendation.accessible ? AR.green : AR.red,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 800,
-              }}>✓</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: AR.ink }}>
-                {routeMode === 'walk' ? routeRiskSummary : routeRecommendation.oneLine}
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="9" stroke={AR.muted} strokeWidth="1.8"/>
-                <path d="M12 7v5l3 2" stroke={AR.muted} strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-              <div style={{ fontSize: 14, color: AR.ink }}>{timeLabel} 소요 ({distanceLabel})</div>
-            </div>
-          </div>
-
           {/* Risks card */}
           <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: `1px solid ${AR.border}` }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: AR.muted, marginBottom: 10 }}>위험 요소</div>
@@ -1012,6 +964,186 @@ function formatEndpointFacility(facility) {
   const exit = facility.exitNo ? `${facility.exitNo}번 출구` : '';
   const label = FACILITY_LAYERS.find(layer => layer.type === facility.type)?.label || facility.name;
   return `${facility.stationName}역 ${exit} ${label}`.replace(/\s+/g, ' ').trim();
+}
+
+const LINE_COLORS = {
+  '1호선': '#0052A4',
+  '2호선': '#00A84D',
+  '3호선': '#EF7C1C',
+  '4호선': '#00A4E3',
+  '5호선': '#996CAC',
+  '6호선': '#CD7C2F',
+  '7호선': '#747F00',
+  '8호선': '#E6186C',
+  '9호선': '#D4A024',
+  '수인분당선': '#F5A200',
+  '분당선': '#F5A200',
+  '신분당선': '#D31145',
+  '경의중앙선': '#77C4A3',
+  '공항철도': '#0090D2',
+  '우이신설선': '#B0CE18',
+};
+
+function getLineColor(lineName) {
+  if (!lineName) return AR.blue;
+  for (const [key, color] of Object.entries(LINE_COLORS)) {
+    if (lineName.includes(key)) return color;
+  }
+  return AR.blue;
+}
+
+function getLineAbbr(lineName) {
+  if (!lineName) return '?';
+  if (lineName.includes('수인분당') || lineName.includes('분당')) return '수';
+  if (lineName.includes('신분당')) return '신';
+  if (lineName.includes('경의중앙')) return '경';
+  if (lineName.includes('공항')) return '공';
+  if (lineName.includes('우이')) return '우';
+  const match = lineName.match(/(\d+)호선/);
+  if (match) return match[1];
+  return lineName[0];
+}
+
+function TransitView({ odsayRoute, routeStatus, routeError, fromStation, toStation, userType, onBarClick }) {
+  if (routeStatus === 'loading') {
+    return (
+      <div style={{ padding: '28px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff', borderBottom: `1px solid ${AR.border}` }}>
+        <div style={{ fontSize: 14, color: AR.muted, fontWeight: 600 }}>대중교통 경로 불러오는 중...</div>
+      </div>
+    );
+  }
+
+  if (!odsayRoute?.subPaths?.length) {
+    return (
+      <div style={{ padding: '24px 16px', background: '#fff', borderBottom: `1px solid ${AR.border}`, textAlign: 'center' }}>
+        <div style={{ fontSize: 13, color: AR.muted, fontWeight: 600 }}>
+          {routeError || '대중교통 경로를 불러올 수 없습니다.'}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ background: '#fff', borderBottom: `1px solid ${AR.border}` }}>
+      {/* 총 시간 + 요금 */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', alignItems: 'center', gap: 8 }}>
+        {odsayRoute.totalTime > 0 && (
+          <span style={{ fontSize: 15, fontWeight: 800, color: AR.ink }}>{odsayRoute.totalTime}분</span>
+        )}
+        {odsayRoute.payment > 0 && (
+          <span style={{ fontSize: 13, color: AR.muted, fontWeight: 600 }}>· {odsayRoute.payment.toLocaleString()}원</span>
+        )}
+      </div>
+
+      {/* 세그먼트 바 (클릭시 지도 토글) */}
+      <div style={{ padding: '0 16px 16px' }}>
+        <div
+          onClick={onBarClick}
+          style={{ display: 'flex', alignItems: 'stretch', height: 24, borderRadius: 12, overflow: 'hidden', cursor: 'pointer' }}
+        >
+          {odsayRoute.subPaths.map((seg, i) => {
+            if (seg.time === 0) return null;
+
+            if (seg.type === 3) {
+              return (
+                <div key={i} style={{
+                  flex: seg.time, minWidth: 32,
+                  background: '#E0E5EC',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2,
+                }}>
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="5" r="2" fill="#94A3B8"/>
+                    <path d="M12 8c-2 0-3.5 1.5-3 4l1 4h4l1-4c.5-2.5-1-4-3-4z" fill="#94A3B8"/>
+                    <path d="M10 16l-1 4M14 16l1 4" stroke="#94A3B8" strokeWidth="1.5" strokeLinecap="round"/>
+                  </svg>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8' }}>{seg.time}분</span>
+                </div>
+              );
+            }
+
+            if (seg.type === 1) {
+              const color = getLineColor(seg.lineName);
+              const abbr = getLineAbbr(seg.lineName);
+              return (
+                <div key={i} style={{
+                  flex: seg.time, minWidth: 44,
+                  background: color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                }}>
+                  <div style={{
+                    width: 15, height: 15, borderRadius: 8,
+                    background: 'rgba(0,0,0,0.18)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 8, fontWeight: 900, color: '#fff', flexShrink: 0,
+                  }}>{abbr}</div>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#fff' }}>{seg.time}분</span>
+                </div>
+              );
+            }
+
+            return null;
+          })}
+        </div>
+      </div>
+
+      {/* 역 목록 (지하철 구간만) */}
+      <div style={{ padding: '0 16px 16px' }}>
+        {odsayRoute.subPaths.filter(s => s.type === 1).map((seg, i) => {
+          const color = getLineColor(seg.lineName);
+          const abbr = getLineAbbr(seg.lineName);
+          const startFacility = findRecommendedFacility(seg.startName, userType);
+          const endFacility = findRecommendedFacility(seg.endName, userType);
+          return (
+            <div key={i} style={{ marginBottom: 4 }}>
+              {/* 출발역 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 14, flexShrink: 0,
+                  border: `2px solid ${color}`, background: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 900, color: color,
+                }}>{abbr}</div>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                    <span style={{ fontSize: 15, fontWeight: 700, color: AR.ink }}>{seg.startName}역</span>
+                    <span style={{ fontSize: 12, color: AR.muted, fontWeight: 500 }}>{seg.lineName}</span>
+                  </div>
+                  {startFacility && (
+                    <div style={{ fontSize: 11, color: AR.blue, fontWeight: 600, marginTop: 1 }}>
+                      {startFacility.exitNo}번 출구 {FACILITY_LAYERS.find(l => l.type === startFacility.type)?.label} 이용
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 세로선 */}
+              <div style={{ marginLeft: 13, paddingTop: 4, paddingBottom: 4 }}>
+                <div style={{ width: 1.5, background: '#CBD5E1', height: seg.stationCount > 2 ? 36 : 22 }}/>
+                {seg.stationCount > 2 && (
+                  <div style={{ fontSize: 11, color: AR.muted, paddingLeft: 10, marginTop: -28 }}>
+                    {seg.stationCount - 2}개 역 경유
+                  </div>
+                )}
+              </div>
+
+              {/* 도착역 */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ width: 9, height: 9, borderRadius: '50%', background: '#94A3B8', marginLeft: 9.5, flexShrink: 0 }}/>
+                <div>
+                  <span style={{ fontSize: 15, fontWeight: 700, color: AR.ink }}>{seg.endName}역</span>
+                  {endFacility && (
+                    <div style={{ fontSize: 11, color: AR.blue, fontWeight: 600, marginTop: 1 }}>
+                      {endFacility.exitNo}번 출구 {FACILITY_LAYERS.find(l => l.type === endFacility.type)?.label} 이용
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 function RouteRiskDetail({ report, onClose }) {
