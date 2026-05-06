@@ -78,6 +78,17 @@ function normalizeSubwayRoute(data) {
   const stations = subwaySections.flatMap(section => extractSectionStations(section));
   const uniqueStations = dedupeStations(stations);
 
+  const subPaths = (path.subPath || []).map(section => ({
+    type: section.trafficType,
+    time: section.sectionTime,
+    distance: section.distance,
+    stationCount: section.stationCount || 0,
+    startName: cleanStationName(section.startName),
+    endName: cleanStationName(section.endName),
+    lineName: getLaneName(section),
+    subwayCode: section.lane?.[0]?.subwayCode,
+  }));
+
   return {
     totalTime: path.info?.totalTime,
     totalDistance: path.info?.totalDistance,
@@ -85,6 +96,7 @@ function normalizeSubwayRoute(data) {
     mapObj: path.info?.mapObj,
     stations: uniqueStations,
     summary: buildRouteSummary(subwaySections),
+    subPaths,
   };
 }
 

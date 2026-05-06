@@ -76,6 +76,7 @@ function loadKakaoMapSdk() {
 export function KakaoMap({
   places = [],
   routePath = EMPTY_ROUTE_PATH,
+  routeSegments = [],
   center,
   height = '100%',
   disableFallbackRoute = false,
@@ -133,6 +134,18 @@ export function KakaoMap({
           });
         }
 
+        routeSegments.forEach((seg) => {
+          if (!seg?.path || seg.path.length < 2) return;
+          new maps.Polyline({
+            map,
+            path: seg.path.map((p) => new maps.LatLng(p.lat, p.lng)),
+            strokeWeight: seg.weight ?? 4,
+            strokeColor: seg.color ?? AR.blue,
+            strokeOpacity: 0.85,
+            strokeStyle: seg.style ?? 'solid',
+          });
+        });
+
         validPlaces.forEach((place, index) => {
           const position = new maps.LatLng(place.lat, place.lng);
 
@@ -170,7 +183,7 @@ export function KakaoMap({
       mapRef.current = null;
       centerRef.current = null;
     };
-  }, [center, disableFallbackRoute, mapPlaces, onPlaceClick, routePath]);
+  }, [center, disableFallbackRoute, mapPlaces, onPlaceClick, routePath, routeSegments]);
 
   useEffect(() => {
     if (!mapNodeRef.current || !window.ResizeObserver) return undefined;
