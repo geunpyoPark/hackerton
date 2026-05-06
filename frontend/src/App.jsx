@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AR } from './design';
 import { LoginScreen } from './screens/LoginScreen';
 import { HomeScreen } from './screens/HomeScreen';
@@ -6,33 +6,70 @@ import { RouteScreen } from './screens/RouteScreen';
 import { ReportScreen } from './screens/ReportScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
 
+const ROUTES = ['login', 'home', 'route', 'report', 'profile'];
+
+function getInitialScreen() {
+  const route = window.location.pathname.replace('/', '') || 'home';
+  return ROUTES.includes(route) ? route : 'home';
+}
+
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [screen, setScreen] = useState('home');
+  const [loggedIn, setLoggedIn] = useState(() => localStorage.getItem('ableRouteLoggedIn') === 'true');
+  const [screen, setScreen] = useState(getInitialScreen);
+  const [userType, setUserTypeState] = useState(() => localStorage.getItem('ableRouteUserType') || 'wheelchair');
   const [, setHistory] = useState([]);
 
+  useEffect(() => {
+    const onPopState = () => setScreen(getInitialScreen());
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, []);
+
   function navigate(to) {
+    if (!ROUTES.includes(to)) return;
     setHistory(h => [...h, screen]);
     setScreen(to);
+    window.history.pushState({}, '', `/${to}`);
   }
 
   function goBack() {
     setHistory(h => {
       const prev = h[h.length - 1];
-      if (prev) setScreen(prev);
+      if (prev) {
+        setScreen(prev);
+        window.history.pushState({}, '', `/${prev}`);
+      }
       return h.slice(0, -1);
     });
   }
 
+  function setUserType(nextType) {
+    setUserTypeState(nextType);
+    localStorage.setItem('ableRouteUserType', nextType);
+  }
+
+  function handleLogin(method = 'demo') {
+    localStorage.setItem('ableRouteLoggedIn', 'true');
+    localStorage.setItem('ableRouteLoginMethod', method);
+    setLoggedIn(true);
+    navigate('home');
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('ableRouteLoggedIn');
+    setLoggedIn(false);
+    navigate('login');
+  }
+
   const screenEl = !loggedIn
-    ? <LoginScreen onLogin={() => setLoggedIn(true)}/>
+    ? <LoginScreen onLogin={handleLogin}/>
     : (() => {
         switch (screen) {
-          case 'home':    return <HomeScreen    onNavigate={navigate}/>;
-          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack}/>;
-          case 'report':  return <ReportScreen  onNavigate={navigate}/>;
-          case 'profile': return <ProfileScreen onNavigate={navigate}/>;
-          default:        return <HomeScreen    onNavigate={navigate}/>;
+          case 'home':    return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType}/>;
+          case 'route':   return <RouteScreen   onNavigate={navigate} onBack={goBack} userType={userType}/>;
+          case 'report':  return <ReportScreen  onNavigate={navigate} userType={userType}/>;
+          case 'profile': return <ProfileScreen onNavigate={navigate} userType={userType} onUserTypeChange={setUserType} onLogout={handleLogout}/>;
+          default:        return <HomeScreen    onNavigate={navigate} userType={userType} onUserTypeChange={setUserType}/>;
         }
       })();
 

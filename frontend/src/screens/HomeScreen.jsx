@@ -1,7 +1,8 @@
-import { useState } from 'react';
 import { AR } from '../design';
 import { WheelchairIcon, StrollerIcon, ElderlyIcon, CrutchIcon, AppLogo } from '../components/Icons';
 import { TabBar } from '../components/TabBar';
+import { PLACES } from '../data/accessibility';
+import { getAllReports } from '../lib/accessibility';
 
 const USER_TYPES = [
   { id: 'wheelchair', label: '휠체어', Icon: WheelchairIcon },
@@ -10,9 +11,10 @@ const USER_TYPES = [
   { id: 'crutch',     label: '목발',   Icon: CrutchIcon },
 ];
 
-export function HomeScreen({ onNavigate }) {
-  const [userType, setUserType] = useState('wheelchair');
+export function HomeScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange }) {
   const activeType = USER_TYPES.find(t => t.id === userType);
+  const reports = getAllReports();
+  const recentReports = reports.slice(0, 3);
 
   return (
     <div style={{
@@ -73,7 +75,7 @@ export function HomeScreen({ onNavigate }) {
               {activeType?.label} 사용자 모드
             </div>
           </div>
-          <button style={{
+          <button onClick={() => onNavigate?.('profile')} style={{
             background: '#EFF4FF', color: AR.blue,
             border: 'none', borderRadius: 8,
             padding: '6px 10px', fontSize: 12, fontWeight: 600,
@@ -96,15 +98,15 @@ export function HomeScreen({ onNavigate }) {
               </svg>
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <div style={{
+              <input aria-label="출발지" defaultValue="강남역" style={{
                 padding: '11px 12px', borderRadius: 10, background: AR.bg,
-                fontSize: 14, color: AR.muted,
-              }}>출발지 입력</div>
+                fontSize: 14, color: AR.ink, border: 'none', outline: 'none',
+              }}/>
               <div style={{ height: 8 }}/>
-              <div style={{
+              <input aria-label="도착지" defaultValue="코엑스" style={{
                 padding: '11px 12px', borderRadius: 10, background: AR.bg,
-                fontSize: 14, color: AR.muted,
-              }}>도착지 입력</div>
+                fontSize: 14, color: AR.ink, border: 'none', outline: 'none',
+              }}/>
             </div>
             <button style={{
               width: 36, alignSelf: 'center',
@@ -133,7 +135,7 @@ export function HomeScreen({ onNavigate }) {
             {USER_TYPES.map(({ id, label, Icon }) => {
               const active = userType === id;
               return (
-                <button key={id} onClick={() => setUserType(id)} style={{
+            <button key={id} onClick={() => onUserTypeChange?.(id)} style={{
                   background: active ? '#EFF4FF' : '#fff',
                   border: `1.5px solid ${active ? AR.blue : AR.border}`,
                   borderRadius: 14,
@@ -203,9 +205,19 @@ export function HomeScreen({ onNavigate }) {
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 10 }}>
-          <ReportRow severity="red"    time="10분 전"   title="2번 출구 엘리베이터 고장" loc="강남역 2번 출구" icon="elev"/>
-          <ReportRow severity="yellow" time="30분 전"   title="3번 출구 입구 턱 있음"    loc="강남역 3번 출구" icon="bump"/>
-          <ReportRow severity="green"  time="1시간 전"  title="4번 출구 경사 주의"       loc="강남역 4번 출구" icon="slope"/>
+          {recentReports.map(report => {
+            const place = PLACES.find(item => item.id === report.place_id) || PLACES[0];
+            return (
+              <ReportRow
+                key={report.id}
+                severity={report.issue_type === 'elevator_broken' || report.issue_type === 'blocked' ? 'red' : 'yellow'}
+                time={report.created_at.slice(5, 16).replace('T', ' ')}
+                title={report.description || '접근성 제보'}
+                loc={place.name}
+                icon={report.issue_type === 'curb' ? 'bump' : report.issue_type === 'slope' || report.issue_type === 'steep_slope' ? 'slope' : 'elev'}
+              />
+            );
+          })}
         </div>
       </div>
 
