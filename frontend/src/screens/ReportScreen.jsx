@@ -3,9 +3,10 @@ import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
 import { PLACES, REPORT_TYPES as BASE_REPORT_TYPES } from '../data/accessibility';
-import { createReport } from '../lib/accessibility';
+import { createReport, getStoredReports } from '../lib/accessibility';
 import { classifyReport } from '../lib/ai';
 import { uploadReportImage } from '../lib/cloudinary';
+import { supabase, hasSupabaseConfig } from '../lib/supabase';
 
 const REPORT_TYPES = [
   { id: 'elevator_broken', label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
@@ -23,6 +24,15 @@ const PALETTE = {
   gray:   { soft: '#F1F5F9', fg: '#475569', border: '#CBD5E1' },
 };
 
+const ISSUE_LABEL = {
+  elevator_broken: '엘리베이터 고장',
+  stairs: '계단 있음',
+  curb: '턱 있음',
+  steep_slope: '급경사',
+  construction: '공사 중',
+  blocked: '기타',
+};
+
 export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, places = PLACES, reports = [], onDataChange }) {
   const [selected, setSelected] = useState(BASE_REPORT_TYPES[0].id);
   const [placeId, setPlaceId] = useState((places[0] || PLACES[0]).id);
@@ -31,9 +41,46 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
   const [imageFile, setImageFile] = useState(null);
   const [submitState, setSubmitState] = useState('idle');
   const [submitMessage, setSubmitMessage] = useState('');
+  const [showMyReports, setShowMyReports] = useState(false);
+  const [myReportList, setMyReportList] = useState([]);
+  const [loadingReports, setLoadingReports] = useState(false);
+
   const myReportsCount = reports.filter(report => report.user_id === userId).length;
   const effectivePlaceId = places.some(place => place.id === placeId) ? placeId : (places[0] || PLACES[0]).id;
   const selectedPlace = places.find(place => place.id === effectivePlaceId) || places[0] || PLACES[0];
+
+  async function handleMoreClick() {
+    setShowMyReports(prev => !prev);
+    if (showMyReports) return;
+
+    setLoadingReports(true);
+    try {
+      let myReports = [];
+
+      if (hasSupabaseConfig && supabase) {
+        const { data, error } = await supabase
+          .from('reports')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (!error && data?.length) {
+          myReports = data;
+        } else {
+          myReports = getStoredReports().filter(r => r.user_id === userId);
+        }
+      } else {
+        myReports = getStoredReports().filter(r => r.user_id === userId);
+      }
+
+      setMyReportList(myReports);
+    } catch (error) {
+      console.warn('내 제보 불러오기 실패:', error);
+      setMyReportList(getStoredReports().filter(r => r.user_id === userId));
+    } finally {
+      setLoadingReports(false);
+    }
+  }
 
   async function handleSubmit() {
     try {
@@ -52,19 +99,12 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
       let classification = null;
 
       try {
-        classification = await classifyReport({
-          userType,
-          place: selectedPlace,
-          report: reportInput,
-        });
+        classification = await classifyReport({ userType, place: selectedPlace, report: reportInput });
       } catch (error) {
         console.warn('AI report classification skipped:', error.message);
       }
 
-      const result = await createReport({
-        ...reportInput,
-        ...(classification || {}),
-      });
+      const result = await createReport({ ...reportInput, ...(classification || {}) });
 
       setDescription('');
       setImageName('');
@@ -74,6 +114,8 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
       setSubmitMessage(result.source === 'supabase'
         ? (classification ? 'AI 분류와 제보가 저장되었습니다.' : (imageUrl ? '사진과 제보가 저장되었습니다.' : '제보가 Supabase에 저장되었습니다.'))
         : 'Supabase 연결이 없어 기기에 임시 저장했습니다.');
+
+      if (showMyReports) handleMoreClick();
     } catch (error) {
       setSubmitState('error');
       setSubmitMessage(error.message || '제보 저장 중 오류가 발생했습니다.');
@@ -188,13 +230,10 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
 
         {submitState !== 'idle' && submitState !== 'saving' && (
           <div style={{
-            marginTop: 6,
-            padding: '10px 12px',
-            borderRadius: 10,
+            marginTop: 6, padding: '10px 12px', borderRadius: 10,
             background: submitState === 'saved' ? AR.greenSoft : submitState === 'error' ? AR.redSoft : AR.yellowSoft,
             color: submitState === 'saved' ? AR.green : submitState === 'error' ? AR.red : AR.yellow,
-            fontSize: 13,
-            fontWeight: 700,
+            fontSize: 13, fontWeight: 700,
           }}>{submitMessage}</div>
         )}
 
@@ -202,26 +241,81 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
           marginTop: 16, width: '100%', height: 54,
           background: submitState === 'saving' ? AR.muted : AR.blue, color: '#fff',
           border: 'none', borderRadius: 14,
-          fontSize: 16, fontWeight: 700,
-          fontFamily: AR.font,
+          fontSize: 16, fontWeight: 700, fontFamily: AR.font,
           boxShadow: '0 4px 12px rgba(37,99,235,0.24)',
-        }}>{submitState === 'saving' ? '저장 중...' : '제출하기'}</button>
+        }}>{submitState === 'saving' ? '보내는 중...' : '제출하기'}</button>
 
         {/* My reports */}
         <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: AR.ink }}>내 제보 현황</div>
-          <div style={{ fontSize: 12, color: AR.muted }}>더보기 ›</div>
+          <div
+            onClick={handleMoreClick}
+            style={{ fontSize: 12, color: AR.blue, cursor: 'pointer', fontWeight: 600 }}
+          >
+            {showMyReports ? '접기 ∧' : '더보기 ›'}
+          </div>
         </div>
         <div style={{
-          marginTop: 10, background: '#fff',
-          borderRadius: 14, padding: 4,
+          marginTop: 10, background: '#fff', borderRadius: 14, padding: 4,
           border: `1px solid ${AR.border}`,
-          display: 'grid', gridTemplateColumns: 'repeat(3,1fr)',
+          display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', // ✅ 2칸으로 변경
         }}>
           <Mini label="내 제보" value={`${myReportsCount}건`}/>
           <Mini label="채택률" value="92%" highlight/>
-          <Mini label="도움 받은 사용자" value="82명"/>
+          {/* ✅ 도움 받은 사용자 제거 */}
         </div>
+
+        {/* 내 제보 목록 */}
+        {showMyReports && (
+          <div style={{ marginTop: 12 }}>
+            {loadingReports
+              ? <div style={{ textAlign: 'center', color: AR.muted, fontSize: 13, padding: 16 }}>
+                  불러오는 중...
+                </div>
+              : myReportList.length === 0
+                ? <div style={{
+                    textAlign: 'center', color: AR.muted,
+                    fontSize: 13, padding: 16,
+                    background: '#fff', borderRadius: 12,
+                    border: `1px solid ${AR.border}`,
+                  }}>
+                    아직 제보한 내용이 없어요 😊
+                  </div>
+                : myReportList.map(report => (
+                    <div key={report.id} style={{
+                      background: '#fff', borderRadius: 12,
+                      padding: '12px 14px', marginBottom: 8,
+                      border: `1px solid ${AR.border}`,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: AR.ink }}>
+                          {ISSUE_LABEL[report.issue_type] || report.issue_type}
+                        </div>
+                        <div style={{
+                          fontSize: 11, fontWeight: 600,
+                          color: report.status === 'active' ? AR.green : AR.muted,
+                          background: report.status === 'active' ? AR.greenSoft : AR.bg,
+                          padding: '2px 8px', borderRadius: 6,
+                        }}>
+                          {report.status === 'active' ? '접수완료' : '처리중'}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12, color: AR.muted, marginTop: 4, lineHeight: 1.5 }}>
+                        {report.description}
+                      </div>
+                      {report.image_url && (
+                        <img src={report.image_url} alt="제보 사진"
+                          style={{ marginTop: 8, width: '100%', borderRadius: 8, objectFit: 'cover', maxHeight: 120 }}
+                        />
+                      )}
+                      <div style={{ fontSize: 11, color: AR.muted, marginTop: 6 }}>
+                        {report.created_at?.slice(0, 10)}
+                      </div>
+                    </div>
+                  ))
+            }
+          </div>
+        )}
       </div>
 
       <TabBar active="report" onNavigate={onNavigate}/>
@@ -244,34 +338,17 @@ function TypeButton({ t, active, onClick }) {
     <button onClick={onClick} style={{
       background: active ? pal.soft : '#fff',
       border: `1.5px solid ${active ? pal.border : AR.border}`,
-      borderRadius: 12,
-      padding: '14px 12px',
+      borderRadius: 12, padding: '14px 12px',
       display: 'flex', alignItems: 'center', gap: 10,
       fontFamily: AR.font, textAlign: 'left',
     }}>
       <div style={{ color: pal.fg, display: 'flex' }}>
-        {t.icon === 'elev' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="3" width="16" height="18" rx="1.5" stroke="currentColor" strokeWidth="2"/>
-          <path d="M12 3v18M9 9l-2 2 2 2M15 13l2-2-2-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>}
-        {t.icon === 'stair' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M3 21h4v-4h4v-4h4V9h4V5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
-        </svg>}
-        {t.icon === 'bump' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M2 18h4l3-8 3 14 3-10 3 4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>}
-        {t.icon === 'slope' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M3 19L21 5M3 19h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>}
-        {t.icon === 'const' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M3 21h18M5 21V11l7-5 7 5v10" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/>
-          <path d="M9 21v-6h6v6" stroke="currentColor" strokeWidth="2"/>
-        </svg>}
-        {t.icon === 'etc' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <circle cx="6" cy="12" r="1.6" fill="currentColor"/>
-          <circle cx="12" cy="12" r="1.6" fill="currentColor"/>
-          <circle cx="18" cy="12" r="1.6" fill="currentColor"/>
-        </svg>}
+        {t.icon === 'elev' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><rect x="4" y="3" width="16" height="18" rx="1.5" stroke="currentColor" strokeWidth="2"/><path d="M12 3v18M9 9l-2 2 2 2M15 13l2-2-2-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        {t.icon === 'stair' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 21h4v-4h4v-4h4V9h4V5" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>}
+        {t.icon === 'bump' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M2 18h4l3-8 3 14 3-10 3 4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        {t.icon === 'slope' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 19L21 5M3 19h18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+        {t.icon === 'const' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M3 21h18M5 21V11l7-5 7 5v10" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M9 21v-6h6v6" stroke="currentColor" strokeWidth="2"/></svg>}
+        {t.icon === 'etc' && <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><circle cx="6" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="18" cy="12" r="1.6" fill="currentColor"/></svg>}
       </div>
       <div style={{ fontSize: 13, fontWeight: 600, color: AR.ink }}>{t.label}</div>
     </button>
