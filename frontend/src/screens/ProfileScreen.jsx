@@ -1,7 +1,13 @@
 import { AR } from '../design';
 import { TabBar } from '../components/TabBar';
+import { USER_TYPES } from '../data/accessibility';
+import { getStoredReports, getUserTypeLabel } from '../lib/accessibility';
 
-export function ProfileScreen({ onNavigate }) {
+export function ProfileScreen({ onNavigate, userType = 'wheelchair', onUserTypeChange, onLogout }) {
+  const localReports = getStoredReports();
+  const points = localReports.reduce((total, report) => total + 10 + (report.image_url ? 20 : 0), 1240);
+  const level = Math.max(1, Math.floor(points / 500) + 1);
+
   return (
     <div style={{
       width: '100%', height: '100%', background: AR.bg,
@@ -54,9 +60,9 @@ export function ProfileScreen({ onNavigate }) {
                 background: AR.blue, color: '#fff',
                 fontSize: 10, fontWeight: 800,
                 padding: '2px 6px', borderRadius: 4, letterSpacing: '0.02em',
-              }}>Lv.3</div>
+              }}>Lv.{level}</div>
             </div>
-            <div style={{ fontSize: 12, color: AR.muted, marginTop: 4 }}>휠체어 사용자</div>
+            <div style={{ fontSize: 12, color: AR.muted, marginTop: 4 }}>{getUserTypeLabel(userType)} 사용자</div>
             <button style={{
               marginTop: 6,
               background: '#fff', color: AR.ink,
@@ -80,10 +86,10 @@ export function ProfileScreen({ onNavigate }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'relative' }}>
             <div>
               <div style={{ fontSize: 11, fontWeight: 600, opacity: 0.85, letterSpacing: '0.02em' }}>접근성 서포터</div>
-              <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2, letterSpacing: '-0.01em' }}>Level 3</div>
-              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>320 / 500 XP</div>
+              <div style={{ fontSize: 22, fontWeight: 800, marginTop: 2, letterSpacing: '-0.01em' }}>Level {level}</div>
+              <div style={{ fontSize: 12, opacity: 0.85, marginTop: 8 }}>{points % 500} / 500 XP</div>
               <div style={{ marginTop: 6, height: 6, width: 160, background: 'rgba(255,255,255,0.2)', borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ width: '64%', height: '100%', background: '#fff', borderRadius: 3 }}/>
+                <div style={{ width: `${(points % 500) / 5}%`, height: '100%', background: '#fff', borderRadius: 3 }}/>
               </div>
             </div>
             <div style={{
@@ -103,10 +109,10 @@ export function ProfileScreen({ onNavigate }) {
         {/* Activity */}
         <div style={{ marginTop: 18, fontSize: 14, fontWeight: 700, color: AR.ink, marginBottom: 8 }}>내 활동</div>
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${AR.border}`, padding: '4px 14px' }}>
-          <ActivityRow icon="report" label="제보한 정보"       value="24건"/>
+          <ActivityRow icon="report" label="제보한 정보"       value={`${24 + localReports.length}건`}/>
           <ActivityRow icon="users"  label="도움 받은 사용자"  value="82명"/>
           <ActivityRow icon="check"  label="채택된 제보"       value="22건"/>
-          <ActivityRow icon="point"  label="포인트"            value="1,240 P" last/>
+          <ActivityRow icon="point"  label="포인트"            value={`${points.toLocaleString()} P`} last/>
         </div>
 
         {/* Badges */}
@@ -128,10 +134,33 @@ export function ProfileScreen({ onNavigate }) {
         {/* Settings */}
         <div style={{ marginTop: 18, fontSize: 14, fontWeight: 700, color: AR.ink, marginBottom: 8 }}>설정</div>
         <div style={{ background: '#fff', borderRadius: 14, border: `1px solid ${AR.border}`, padding: '4px 14px' }}>
-          <SettingRow icon="user"   label="사용자 유형 설정" value="휠체어"/>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2,1fr)',
+            gap: 8,
+            padding: '12px 0',
+            borderBottom: `1px solid ${AR.border}`,
+          }}>
+            {USER_TYPES.map(type => {
+              const active = type.id === userType;
+              return (
+                <button key={type.id} onClick={() => onUserTypeChange?.(type.id)} style={{
+                  minHeight: 38,
+                  borderRadius: 10,
+                  border: `1.5px solid ${active ? AR.blue : AR.border}`,
+                  background: active ? '#EFF4FF' : '#fff',
+                  color: active ? AR.blue : AR.ink,
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}>{type.label}</button>
+              );
+            })}
+          </div>
           <SettingRow icon="bell"   label="알림 설정"/>
           <SettingRow icon="chat"   label="문의하기"/>
-          <SettingRow icon="logout" label="로그아웃" last danger/>
+          <button onClick={onLogout} style={{ width: '100%', border: 'none', background: 'transparent', padding: 0, textAlign: 'left' }}>
+            <SettingRow icon="logout" label="로그아웃" last danger/>
+          </button>
         </div>
       </div>
 
