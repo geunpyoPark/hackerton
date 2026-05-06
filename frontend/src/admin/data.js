@@ -1,9 +1,16 @@
 const ISSUE_LABELS = {
   elevator_broken: '엘리베이터 고장',
+  escalator_broken: '에스컬레이터 고장',
+  lift_broken: '휠체어 리프트 고장',
   stairs: '계단/턱',
   curb: '계단/턱',
   steep_slope: '급경사',
   slope: '급경사',
+  tactile_block: '점자블록 문제',
+  signage: '안내 표지 부족',
+  accessible_toilet: '장애인화장실 문제',
+  transfer_passage: '환승 통로 불편',
+  platform_gap: '승강장 간격 위험',
   construction: '공사 중',
   blocked: '통행 불가',
   other: '기타',
@@ -11,10 +18,17 @@ const ISSUE_LABELS = {
 
 const ISSUE_COLORS = {
   elevator_broken: '#6366F1',
+  escalator_broken: '#8B5CF6',
+  lift_broken: '#6366F1',
   stairs: '#F59E0B',
   curb: '#FB923C',
   steep_slope: '#3B82F6',
   slope: '#3B82F6',
+  tactile_block: '#EC4899',
+  signage: '#8B5CF6',
+  accessible_toilet: '#06B6D4',
+  transfer_passage: '#F97316',
+  platform_gap: '#EF4444',
   construction: '#10B981',
   blocked: '#EF4444',
   other: '#CBD5E1',
@@ -22,12 +36,17 @@ const ISSUE_COLORS = {
 
 const CATEGORY_COLORS = {
   '엘리베이터 고장': '#6366F1',
+  '에스컬레이터 고장': '#8B5CF6',
+  '휠체어 리프트 고장': '#6366F1',
   '계단/턱': '#F59E0B',
   '급경사': '#3B82F6',
   '공사 중': '#10B981',
   '통행 불가': '#EF4444',
   '안내 표지 부족': '#8B5CF6',
   '점자블록 문제': '#EC4899',
+  '장애인화장실 문제': '#06B6D4',
+  '환승 통로 불편': '#F97316',
+  '승강장 간격 위험': '#EF4444',
   '장애물 적치': '#F97316',
   '보도 파손': '#DC2626',
   '조명 부족': '#EAB308',
@@ -50,6 +69,34 @@ const REGION_COORDS = {
   기타: { x: 480, y: 320 },
 };
 
+const SEOUL_DISTRICT_CENTERS = [
+  { name: '강남구', lat: 37.5172, lng: 127.0473 },
+  { name: '강동구', lat: 37.5301, lng: 127.1238 },
+  { name: '강북구', lat: 37.6396, lng: 127.0257 },
+  { name: '강서구', lat: 37.5509, lng: 126.8495 },
+  { name: '관악구', lat: 37.4784, lng: 126.9516 },
+  { name: '광진구', lat: 37.5384, lng: 127.0823 },
+  { name: '구로구', lat: 37.4955, lng: 126.8877 },
+  { name: '금천구', lat: 37.4569, lng: 126.8955 },
+  { name: '노원구', lat: 37.6542, lng: 127.0568 },
+  { name: '도봉구', lat: 37.6688, lng: 127.0471 },
+  { name: '동대문구', lat: 37.5744, lng: 127.0396 },
+  { name: '동작구', lat: 37.5124, lng: 126.9393 },
+  { name: '마포구', lat: 37.5663, lng: 126.9016 },
+  { name: '서대문구', lat: 37.5791, lng: 126.9368 },
+  { name: '서초구', lat: 37.4837, lng: 127.0324 },
+  { name: '성동구', lat: 37.5633, lng: 127.0371 },
+  { name: '성북구', lat: 37.5894, lng: 127.0167 },
+  { name: '송파구', lat: 37.5145, lng: 127.1059 },
+  { name: '양천구', lat: 37.5169, lng: 126.8664 },
+  { name: '영등포구', lat: 37.5264, lng: 126.8962 },
+  { name: '용산구', lat: 37.5326, lng: 126.9905 },
+  { name: '은평구', lat: 37.6176, lng: 126.9227 },
+  { name: '종로구', lat: 37.5735, lng: 126.9788 },
+  { name: '중구', lat: 37.5636, lng: 126.9976 },
+  { name: '중랑구', lat: 37.6063, lng: 127.0927 },
+];
+
 function formatNumber(value) {
   return new Intl.NumberFormat('ko-KR').format(value);
 }
@@ -66,8 +113,10 @@ function getIssueLabel(issueType) {
   return ISSUE_LABELS[issueType] || '기타';
 }
 
-// ✅ 주소 기반으로 수정
-function inferRegion(place) {
+function inferRegion(report, place) {
+  const coordRegion = inferRegionByCoords(report?.lat, report?.lng);
+  if (coordRegion) return coordRegion;
+
   const address = `${place?.address || ''} ${place?.road_address || ''} ${place?.station_name || ''}`;
   if (address.includes('강남구')) return '강남구';
   if (address.includes('송파구')) return '송파구';
@@ -92,21 +141,47 @@ function inferRegion(place) {
   return '기타';
 }
 
+function inferRegionByCoords(latInput, lngInput) {
+  const lat = Number(latInput);
+  const lng = Number(lngInput);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
+
+  const nearest = SEOUL_DISTRICT_CENTERS
+    .map(district => ({
+      ...district,
+      distance: getDistanceMeters({ lat, lng }, district),
+    }))
+    .sort((a, b) => a.distance - b.distance)[0];
+
+  return nearest?.distance <= 8500 ? nearest.name : '';
+}
+
+function getDistanceMeters(a, b) {
+  const radius = 6371000;
+  const dLat = (b.lat - a.lat) * Math.PI / 180;
+  const dLng = (b.lng - a.lng) * Math.PI / 180;
+  const lat1 = a.lat * Math.PI / 180;
+  const lat2 = b.lat * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * radius * Math.asin(Math.sqrt(h));
+}
+
 function getRisk(report, place) {
   if (report.ai_severity === "high") return '위험';
   if (report.ai_severity === "medium") return '주의';
   if (report.ai_severity === "low") return '양호';
-  if (['elevator_broken', 'stairs', 'curb', 'blocked'].includes(report.issue_type)) return '위험';
-  if (['steep_slope', 'slope', 'construction'].includes(report.issue_type)) return '주의';
+  if (['elevator_broken', 'lift_broken', 'platform_gap', 'stairs', 'curb', 'blocked'].includes(report.issue_type)) return '위험';
+  if (['escalator_broken', 'tactile_block', 'accessible_toilet', 'transfer_passage', 'steep_slope', 'slope', 'construction'].includes(report.issue_type)) return '주의';
   if (place?.wheelchair_accessible === false || place?.has_stairs || place?.has_curb) return '주의';
   return '양호';
 }
 
 function getAgency(report, place) {
   if (report.responsible_agency) return report.responsible_agency;
-  if (['elevator_broken', 'stairs', 'blocked'].includes(report.issue_type) && place?.station_name) return '서울교통공사';
+  if (['elevator_broken', 'escalator_broken', 'lift_broken', 'tactile_block', 'signage', 'accessible_toilet', 'transfer_passage', 'platform_gap', 'stairs', 'blocked'].includes(report.issue_type) && place?.station_name) return '서울교통공사';
   if (['curb', 'steep_slope', 'slope', 'construction'].includes(report.issue_type)) return '도로관리사업소';
-  const region = inferRegion(place);
+  const region = inferRegion(report, place);
   return region.endsWith('구') ? `${region}청` : '기타 기관';
 }
 
@@ -114,6 +189,12 @@ function getStatusLabel(status) {
   if (['done', 'completed', 'resolved'].includes(status)) return '완료';
   if (['processing', 'in_progress'].includes(status)) return '처리중';
   return '접수';
+}
+
+function getRiskRank(risk) {
+  if (risk === '위험') return 0;
+  if (risk === '주의') return 1;
+  return 2;
 }
 
 function countBy(items, getKey) {
@@ -154,7 +235,7 @@ export function buildAdminAnalytics(reports = [], places = []) {
   const now = new Date();
   const enriched = reports.map((report) => {
     const place = placeMap.get(report.place_id);
-    const region = inferRegion(place);
+    const region = inferRegion(report, place);
     const risk = getRisk(report, place);
     const status = getStatusLabel(report.status);
     return {
@@ -221,11 +302,19 @@ export function buildAdminAnalytics(reports = [], places = []) {
       };
     });
 
-  const recentCases = enriched.slice(0, 5).map(report => ({
+  const recentCases = [...enriched]
+    .sort((a, b) => {
+      const riskDiff = getRiskRank(a.risk) - getRiskRank(b.risk);
+      if (riskDiff !== 0) return riskDiff;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    })
+    .slice(0, 6)
+    .map(report => ({
     time: report.created_at ? report.created_at.replace('T', ' ').slice(0, 16) : '-',
     region: report.region,
-    type: report.issueLabel,
-    text: report.ai_summary || report.description || `${report.place?.name || '선택 장소'} 접근성 제보`,
+    originalType: getIssueLabel(report.issue_type),
+    aiCategory: report.issueLabel,
+    text: report.description || `${report.place?.name || '선택 장소'} 접근성 제보`,
     risk: report.risk,
     channel: report.image_url ? '사진 제보' : '사용자 앱',
     status: report.statusLabel,

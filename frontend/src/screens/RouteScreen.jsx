@@ -775,14 +775,22 @@ function formatDistance(meters) {
 const ROUTE_RISK_DISTANCE_METERS = 60;
 const HIGH_RISK_ISSUE_TYPES = new Set([
   'elevator_broken',
+  'escalator_broken',
+  'lift_broken',
   'stairs',
   'curb',
+  'tactile_block',
+  'accessible_toilet',
+  'transfer_passage',
+  'platform_gap',
   'construction',
   'blocked',
   'other',
 ]);
 const HIGH_RISK_AI_CATEGORIES = new Set([
   '엘리베이터 고장',
+  '에스컬레이터 고장',
+  '휠체어 리프트 고장',
   '계단/턱',
   '공사 중',
   '통행 불가',
@@ -790,6 +798,9 @@ const HIGH_RISK_AI_CATEGORIES = new Set([
   '보도 파손',
   '장애물 적치',
   '점자블록 문제',
+  '장애인화장실 문제',
+  '환승 통로 불편',
+  '승강장 간격 위험',
 ]);
 
 function findRouteRiskReports(reports, routePath) {
@@ -876,6 +887,8 @@ function hasLatLng(point) {
 function getReportRiskSeverity(report) {
   return report.ai_severity === 'high' ||
     report.issue_type === 'elevator_broken' ||
+    report.issue_type === 'lift_broken' ||
+    report.issue_type === 'platform_gap' ||
     report.issue_type === 'blocked' ||
     report.issue_type === 'construction'
     ? 'red'
@@ -889,10 +902,17 @@ function getReportRiskLabel(report) {
 function getIssueTypeLabel(issueType) {
   const labels = {
     elevator_broken: '엘리베이터 고장',
+    escalator_broken: '에스컬레이터 고장',
+    lift_broken: '휠체어 리프트 고장',
     stairs: '계단 있음',
     curb: '턱 있음',
     steep_slope: '급경사',
     slope: '경사 있음',
+    tactile_block: '점자블록 문제',
+    signage: '안내 표지 부족',
+    accessible_toilet: '장애인화장실 문제',
+    transfer_passage: '환승 통로 불편',
+    platform_gap: '승강장 간격 위험',
     construction: '공사 중',
     blocked: '통행 불가',
     other: '기타 위험',

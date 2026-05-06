@@ -115,9 +115,16 @@ export const DEMO_REPORTS = [
 
 export const REPORT_TYPES = [
   { id: 'elevator_broken', label: '엘리베이터 고장' },
+  { id: 'escalator_broken', label: '에스컬레이터 고장' },
+  { id: 'lift_broken', label: '휠체어 리프트 고장' },
   { id: 'stairs', label: '계단 있음' },
   { id: 'curb', label: '턱 있음' },
   { id: 'steep_slope', label: '급경사' },
+  { id: 'tactile_block', label: '점자블록 문제' },
+  { id: 'signage', label: '안내 표지 부족' },
+  { id: 'accessible_toilet', label: '장애인화장실 문제' },
+  { id: 'transfer_passage', label: '환승 통로 불편' },
+  { id: 'platform_gap', label: '승강장 간격 위험' },
   { id: 'construction', label: '공사 중' },
   { id: 'other', label: '기타' },
 ];
