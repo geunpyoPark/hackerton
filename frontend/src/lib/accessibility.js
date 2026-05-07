@@ -394,13 +394,23 @@ export function getRiskLevel(place, reports) {
     place.has_stairs ||
     place.has_curb ||
     issueTypes.includes('elevator_broken') ||
+    issueTypes.includes('lift_broken') ||
+    issueTypes.includes('platform_gap') ||
     issueTypes.includes('blocked') ||
     issueTypes.includes('stairs') ||
     issueTypes.includes('curb')
   ) {
     return 'red';
   }
-  if (place.slope_level === 'medium' || issueTypes.includes('steep_slope') || issueTypes.includes('slope')) {
+  if (
+    place.slope_level === 'medium' ||
+    issueTypes.includes('steep_slope') ||
+    issueTypes.includes('slope') ||
+    issueTypes.includes('escalator_broken') ||
+    issueTypes.includes('tactile_block') ||
+    issueTypes.includes('accessible_toilet') ||
+    issueTypes.includes('transfer_passage')
+  ) {
     return 'yellow';
   }
   return 'green';
@@ -409,9 +419,12 @@ export function getRiskLevel(place, reports) {
 export function buildAccessibilitySummary(place, reports, userType) {
   const label = getUserTypeLabel(userType);
   const issueTypes = reports.map(report => report.issue_type);
-  const hasElevatorProblem = !place.has_elevator || issueTypes.includes('elevator_broken');
-  const hasStepProblem = place.has_stairs || place.has_curb || issueTypes.includes('stairs') || issueTypes.includes('curb');
+  const hasElevatorProblem = !place.has_elevator || issueTypes.includes('elevator_broken') || issueTypes.includes('lift_broken');
+  const hasStepProblem = place.has_stairs || place.has_curb || issueTypes.includes('stairs') || issueTypes.includes('curb') || issueTypes.includes('platform_gap');
   const hasSlopeProblem = place.slope_level !== 'low' || issueTypes.includes('steep_slope') || issueTypes.includes('slope');
+  const hasStationInteriorProblem = issueTypes.some(issueType => (
+    ['escalator_broken', 'tactile_block', 'signage', 'accessible_toilet', 'transfer_passage'].includes(issueType)
+  ));
 
   if (userType === 'wheelchair' && (hasElevatorProblem || hasStepProblem)) {
     return {
@@ -436,6 +449,15 @@ export function buildAccessibilitySummary(place, reports, userType) {
       oneLine: `${label} 기준으로 이동은 가능하지만 경사 구간 주의가 필요합니다.`,
       risks: '경사 구간 관련 제보가 있습니다.',
       action: '천천히 이동하고 우천 시 대체 경로를 확인하세요.',
+      accessible: true,
+    };
+  }
+
+  if (hasStationInteriorProblem) {
+    return {
+      oneLine: `${label} 기준으로 역사 내부 이동에 주의가 필요합니다.`,
+      risks: '에스컬레이터, 점자블록, 안내 표지, 화장실 또는 환승 통로 관련 제보가 있습니다.',
+      action: '역무원 안내를 확인하고 엘리베이터가 있는 동선을 우선 이용하세요.',
       accessible: true,
     };
   }

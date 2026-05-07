@@ -12,9 +12,16 @@ import { resolveKakaoPlaceLocation as searchKakaoPlace } from '../lib/kakaoPlace
 
 const REPORT_TYPES = [
   { id: 'elevator_broken', label: '엘리베이터 고장', color: 'red',    icon: 'elev' },
+  { id: 'escalator_broken', label: '에스컬레이터 고장', color: 'red', icon: 'stair' },
+  { id: 'lift_broken',      label: '휠체어 리프트 고장', color: 'red', icon: 'elev' },
   { id: 'stairs',          label: '계단 있음',       color: 'yellow', icon: 'stair' },
   { id: 'curb',            label: '턱 있음',         color: 'yellow', icon: 'bump' },
   { id: 'steep_slope',     label: '급경사',          color: 'purple', icon: 'slope' },
+  { id: 'tactile_block',    label: '점자블록 문제',   color: 'yellow', icon: 'bump' },
+  { id: 'signage',          label: '안내 표지 부족',  color: 'purple', icon: 'etc' },
+  { id: 'accessible_toilet', label: '장애인화장실 문제', color: 'yellow', icon: 'etc' },
+  { id: 'transfer_passage', label: '환승 통로 불편',  color: 'yellow', icon: 'bump' },
+  { id: 'platform_gap',     label: '승강장 간격 위험', color: 'red', icon: 'bump' },
   { id: 'construction',    label: '공사 중',         color: 'gray',   icon: 'const' },
   { id: 'other',           label: '기타',            color: 'gray',   icon: 'etc' },
 ];
@@ -28,11 +35,19 @@ const PALETTE = {
 
 const ISSUE_LABEL = {
   elevator_broken: '엘리베이터 고장',
+  escalator_broken: '에스컬레이터 고장',
+  lift_broken: '휠체어 리프트 고장',
   stairs: '계단 있음',
   curb: '턱 있음',
   steep_slope: '급경사',
+  tactile_block: '점자블록 문제',
+  signage: '안내 표지 부족',
+  accessible_toilet: '장애인화장실 문제',
+  transfer_passage: '환승 통로 불편',
+  platform_gap: '승강장 간격 위험',
   construction: '공사 중',
   blocked: '기타',
+  other: '기타',
 };
 
 export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, places = PLACES, reports = [], onDataChange }) {
@@ -211,6 +226,8 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
       const reportPlace = hasCustomPlace
         ? await createCustomPlace({
             name: customName || '현재 위치',
+            station_name: searchedPlace?.address || searchedPlace?.road_address || searchedPlace?.station_name || '',
+            line_name: currentLocation ? '현재 위치 좌표' : '장소 검색',
             lat: previewPlace.lat,
             lng: previewPlace.lng,
             fallbackPlaceId: selectedPlace.id,

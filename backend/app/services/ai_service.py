@@ -15,10 +15,17 @@ USER_TYPE_LABELS = {
 
 REPORT_CATEGORY_LABELS = {
     "elevator_broken": "엘리베이터 고장",
+    "escalator_broken": "에스컬레이터 고장",
+    "lift_broken": "휠체어 리프트 고장",
     "stairs": "계단/턱",
     "curb": "계단/턱",
     "steep_slope": "급경사",
     "slope": "급경사",
+    "tactile_block": "점자블록 문제",
+    "signage": "안내 표지 부족",
+    "accessible_toilet": "장애인화장실 문제",
+    "transfer_passage": "환승 통로 불편",
+    "platform_gap": "승강장 간격 위험",
     "construction": "공사 중",
     "blocked": "통행 불가",
     "other": "기타",
@@ -26,12 +33,17 @@ REPORT_CATEGORY_LABELS = {
 
 CLASSIFICATION_CATEGORIES = [
     "엘리베이터 고장",
+    "에스컬레이터 고장",
+    "휠체어 리프트 고장",
     "계단/턱",
     "급경사",
     "공사 중",
     "통행 불가",
     "안내 표지 부족",
     "점자블록 문제",
+    "장애인화장실 문제",
+    "환승 통로 불편",
+    "승강장 간격 위험",
     "장애물 적치",
     "보도 파손",
     "조명 부족",
@@ -42,12 +54,17 @@ CLASSIFICATION_CATEGORIES = [
 
 CATEGORY_AGENCY_RULES = {
     "엘리베이터 고장": "서울교통공사",
+    "에스컬레이터 고장": "서울교통공사",
+    "휠체어 리프트 고장": "서울교통공사",
     "계단/턱": "서울교통공사",
     "급경사": "도로관리사업소",
     "공사 중": "도로관리사업소",
     "통행 불가": "도로관리사업소",
     "안내 표지 부족": "서울교통공사",
-    "점자블록 문제": "도로관리사업소",
+    "점자블록 문제": "서울교통공사",
+    "장애인화장실 문제": "서울교통공사",
+    "환승 통로 불편": "서울교통공사",
+    "승강장 간격 위험": "서울교통공사",
     "장애물 적치": "구청",
     "보도 파손": "도로관리사업소",
     "조명 부족": "구청",
@@ -62,6 +79,16 @@ def get_report_category(issue_type: str) -> str:
 
 def infer_other_category(description: str) -> str:
     text = description or ""
+    if any(word in text for word in ["에스컬레이터", "에스카레이터"]):
+        return "에스컬레이터 고장"
+    if any(word in text for word in ["리프트", "휠체어리프트", "휠체어 리프트"]):
+        return "휠체어 리프트 고장"
+    if any(word in text for word in ["장애인화장실", "장애인 화장실", "화장실"]):
+        return "장애인화장실 문제"
+    if any(word in text for word in ["환승", "환승통로", "환승 통로"]):
+        return "환승 통로 불편"
+    if any(word in text for word in ["승강장", "열차 간격", "발빠짐", "틈", "단차"]):
+        return "승강장 간격 위험"
     if any(word in text for word in ["점자", "블록", "유도블록"]):
         return "점자블록 문제"
     if any(word in text for word in ["입간판", "적치", "물건", "장애물", "방치", "가판"]):
@@ -83,11 +110,11 @@ def infer_other_category(description: str) -> str:
 
 def get_report_severity(issue_type: str, category: str = "", description: str = "") -> str:
     text = description or ""
-    if issue_type in {"elevator_broken", "stairs", "curb", "blocked"}:
+    if issue_type in {"elevator_broken", "lift_broken", "platform_gap", "stairs", "curb", "blocked"}:
         return "high"
-    if category in {"통행 불가", "보도 파손", "점자블록 문제"}:
+    if category in {"통행 불가", "보도 파손", "휠체어 리프트 고장", "승강장 간격 위험", "점자블록 문제"}:
         return "high"
-    if issue_type in {"steep_slope", "slope", "construction"}:
+    if issue_type in {"escalator_broken", "tactile_block", "accessible_toilet", "transfer_passage", "steep_slope", "slope", "construction"}:
         return "medium"
     if category in {"장애물 적치", "불법 주정차", "임시 통행로 문제", "안내 표지 부족", "조명 부족"}:
         return "medium"
@@ -109,7 +136,18 @@ def get_region_agency(place: dict) -> str:
 
 def get_responsible_agency(issue_type: str, place: dict, category: str = "") -> str:
     station_name = place.get("station_name") or ""
-    if issue_type in {"elevator_broken", "stairs", "blocked"} and station_name:
+    if issue_type in {
+        "elevator_broken",
+        "escalator_broken",
+        "lift_broken",
+        "tactile_block",
+        "signage",
+        "accessible_toilet",
+        "transfer_passage",
+        "platform_gap",
+        "stairs",
+        "blocked",
+    } and station_name:
         return "서울교통공사"
     if issue_type in {"curb", "steep_slope", "slope", "construction"}:
         return "도로관리사업소"
@@ -123,7 +161,7 @@ def get_responsible_agency(issue_type: str, place: dict, category: str = "") -> 
 
 def get_priority_score(issue_type: str, severity: str, has_image: bool) -> int:
     base = {"high": 75, "medium": 50, "low": 30}.get(severity, 30)
-    if issue_type == "blocked":
+    if issue_type in {"blocked", "platform_gap", "lift_broken"}:
         base += 10
     if has_image:
         base += 5
@@ -251,6 +289,7 @@ JSON 형식:
 
 분류 기준:
 - 지하철역 내부/출구의 엘리베이터, 계단, 안내 표지는 주로 서울교통공사
+- 지하철역 내부의 에스컬레이터, 휠체어 리프트, 점자블록, 장애인화장실, 환승 통로, 승강장 간격 문제는 주로 서울교통공사
 - 보도 파손, 급경사, 공사 중, 임시 통행로는 주로 도로관리사업소
 - 불법 주정차, 장애물 적치, 조명 부족은 주로 해당 구청
 - 사용자가 기타를 선택했더라도 상세 설명을 보고 가장 가까운 세부 카테고리로 분류

@@ -184,22 +184,22 @@ export function PremiumCard() {
               <path d="M3 18l3-9 6 6 6-12 3 15H3z" fill="#fff"/>
             </svg>
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: AD.ink, letterSpacing: '-0.01em' }}>프리미엄 서비스</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: AD.ink, letterSpacing: '-0.01em' }}>기관용 분석 구독</div>
         </div>
         <div style={{ background: '#0F172A', color: '#fff', fontSize: 11, fontWeight: 700, padding: '4px 9px', borderRadius: 6 }}>
           현재 플랜: 프리미엄
         </div>
       </div>
-      <PremiumRow icon="report"  title="AI 월간 분석 리포트" sub="매월 1회, AI가 분석한 월간 리포트를 받아보세요." action="5월 리포트 보기" tone="primary"/>
-      <PremiumRow icon="bell"    title="위험 지역 알림"      sub="위험도 상승 지역을 실시간으로 알려드려요."       action={<><CheckIcon/>설정됨</>} tone="green"/>
-      <PremiumRow icon="compare" title="맞춤형 비교 분석"    sub="지역/기관별 비교 분석 데이터를 제공합니다."     action="사용하기" tone="primary" last/>
+      <PremiumRow icon="report"  title="AI 민원 분류 리포트" sub="원문 제보를 유형, 위험도, 담당 기관별로 자동 정리합니다." action="리포트 보기" tone="primary"/>
+      <PremiumRow icon="bell"    title="위험 민원 우선 알림"  sub="통행 불가, 공사, 엘리베이터 고장 민원을 먼저 알려줍니다." action={<><CheckIcon/>설정됨</>} tone="green"/>
+      <PremiumRow icon="compare" title="기관별 처리 현황"    sub="부서별 담당 건수와 처리율을 비교해 병목을 확인합니다."     action="분석 보기" tone="primary" last/>
       <button style={{
         width: '100%', height: 46, marginTop: 14,
         background: 'linear-gradient(135deg, #6366F1, #8B5CF6)',
         color: '#fff', border: 'none', borderRadius: 11,
         fontSize: 13, fontWeight: 700, fontFamily: AD.font, cursor: 'pointer',
         boxShadow: '0 4px 14px rgba(99,102,241,0.35)',
-      }}>플랜 관리 및 상세 기능 보기</button>
+      }}>구독 리포트 샘플 보기</button>
     </Card>
   );
 }
@@ -245,22 +245,22 @@ export function NotiCenter() {
 
 // ─── Recent Cases Table ───────────────────────────────────────────────────────
 const CASE_ROWS = [
-  { time: '2025-05-31 14:23', region: '강남구 역삼동',   type: '엘리베이터 고장', text: '강남 2번 출구 엘리베이터 작동 불가',  risk: '위험', channel: '사용자 앱', status: '접수',  org: '서울교통공사' },
-  { time: '2025-05-31 13:58', region: '송파구 잠실동',   type: '계단/턱',         text: '잠실역 8번 출구 계단 턱 높음',       risk: '주의', channel: '사용자 앱', status: '접수',  org: '송파구청' },
-  { time: '2025-05-31 13:42', region: '서초구 서초동',   type: '공사 중',         text: '교대역 9번 출구 공사로 통행 불편',    risk: '주의', channel: '웹 제보',  status: '접수',  org: '서울교통공사' },
-  { time: '2025-05-31 12:18', region: '영등포구 당산동', type: '급경사',          text: '당산역 인근 인도 급경사 미끄러움',    risk: '주의', channel: '사용자 앱', status: '처리중', org: '도로관리사업소' },
-  { time: '2025-05-31 11:05', region: '마포구 합정동',   type: '통행 불가',       text: '합정역 5번 출구 휠체어 통행 어려움', risk: '위험', channel: '사용자 앱', status: '처리중', org: '서울교통공사' },
+  { time: '2025-05-31 14:23', region: '강남구 역삼동', originalType: '기타', aiCategory: '엘리베이터 고장', text: '강남 2번 출구 엘리베이터 작동 불가', risk: '위험', channel: '사용자 앱', status: '접수', org: '서울교통공사' },
+  { time: '2025-05-31 13:58', region: '송파구 잠실동', originalType: '기타', aiCategory: '계단/턱', text: '잠실역 8번 출구 계단 턱 높음', risk: '주의', channel: '사용자 앱', status: '접수', org: '송파구청' },
+  { time: '2025-05-31 13:42', region: '서초구 서초동', originalType: '공사 중', aiCategory: '공사 중', text: '교대역 9번 출구 공사로 통행 불편', risk: '주의', channel: '웹 제보', status: '접수', org: '서울교통공사' },
+  { time: '2025-05-31 12:18', region: '영등포구 당산동', originalType: '급경사', aiCategory: '급경사', text: '당산역 인근 인도 급경사 미끄러움', risk: '주의', channel: '사용자 앱', status: '처리중', org: '도로관리사업소' },
+  { time: '2025-05-31 11:05', region: '마포구 합정동', originalType: '기타', aiCategory: '통행 불가', text: '합정역 5번 출구 휠체어 통행 어려움', risk: '위험', channel: '사용자 앱', status: '처리중', org: '서울교통공사' },
 ];
 const STAT_TONE = { '접수': 'indigo', '처리중': 'yellow', '완료': 'green' };
 
 export function RecentCases({ rows = CASE_ROWS }) {
-  const cols = '120px 104px 92px minmax(180px, 1fr) 56px 74px 56px 104px';
+  const cols = '120px 86px minmax(210px, 1fr) 86px 64px 56px 112px';
   const tableRows = rows.length ? rows : CASE_ROWS;
 
   return (
     <Card title="최근 민원 목록" padding={0} action={<MoreLink/>}>
       <div style={{ padding: '4px 18px 16px', overflowX: 'auto' }}>
-        <div style={{ minWidth: 800 }}>
+        <div style={{ minWidth: 820 }}>
         <div style={{
           display: 'grid', gridTemplateColumns: cols,
           gap: 10, alignItems: 'center',
@@ -268,9 +268,9 @@ export function RecentCases({ rows = CASE_ROWS }) {
           padding: '14px 4px 10px', borderBottom: `1px solid ${AD.borderSoft}`,
           wordBreak: 'keep-all',
         }}>
-          <div>접수 시간</div><div>지역</div><div>유형</div><div>내용</div>
+          <div>접수 시간</div><div>지역</div><div>원문 제보</div>
+          <div style={{ textAlign: 'center' }}>AI 분류</div>
           <div style={{ textAlign: 'center' }}>위험도</div>
-          <div>접수 채널</div>
           <div style={{ textAlign: 'center' }}>상태</div>
           <div>담당 기관</div>
         </div>
@@ -285,10 +285,13 @@ export function RecentCases({ rows = CASE_ROWS }) {
           }}>
             <div style={{ color: AD.muted, fontVariantNumeric: 'tabular-nums' }}>{r.time}</div>
             <div style={{ color: AD.ink, fontWeight: 600, whiteSpace: 'nowrap' }}>{r.region}</div>
-            <div style={{ color: AD.text, whiteSpace: 'nowrap' }}>{r.type}</div>
             <div style={{ color: AD.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.text}</div>
+            <div style={{ textAlign: 'center' }}>
+              <Pill tone={r.originalType === '기타' ? 'indigo' : RISK_TONE[r.risk]} size="sm">
+                {r.aiCategory || r.originalType}
+              </Pill>
+            </div>
             <div style={{ textAlign: 'center' }}><Pill tone={RISK_TONE[r.risk]} size="sm">{r.risk}</Pill></div>
-            <div style={{ color: AD.muted, whiteSpace: 'nowrap' }}>{r.channel}</div>
             <div style={{ textAlign: 'center' }}><Pill tone={STAT_TONE[r.status]} size="sm">{r.status}</Pill></div>
             <div style={{ color: AD.text, whiteSpace: 'nowrap' }}>{r.org}</div>
           </div>
