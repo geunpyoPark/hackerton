@@ -97,6 +97,53 @@ const SEOUL_DISTRICT_CENTERS = [
   { name: '중랑구', lat: 37.6063, lng: 127.0927 },
 ];
 
+const SUBWAY_FACILITY_CATEGORIES = new Set([
+  '엘리베이터 고장',
+  '에스컬레이터 고장',
+  '휠체어 리프트 고장',
+  '계단/턱',
+  '안내 표지 부족',
+  '점자블록 문제',
+  '장애인화장실 문제',
+  '환승 통로 불편',
+  '승강장 간격 위험',
+  '통행 불가',
+]);
+
+const PRIVATE_FACILITY_WORDS = ['코엑스', '몰', '백화점', '마트', '상가', '빌딩', '타워', '병원', '대학교', '캠퍼스'];
+
+function getContextText(report, place) {
+  return [
+    place?.name,
+    place?.station_name,
+    place?.line_name,
+    place?.address,
+    place?.road_address,
+    report?.description,
+  ].filter(Boolean).join(' ');
+}
+
+function hasSubwayContext(report, place) {
+  const text = getContextText(report, place);
+  return /[가-힣A-Za-z0-9]+역(\s|$|[0-9번출구])/.test(text) ||
+    ['지하철', '출구', '승강장', '환승', '개찰구', '플랫폼', '역사', '호선'].some(word => text.includes(word));
+}
+
+function hasPrivateFacilityContext(report, place) {
+  const text = getContextText(report, place);
+  return PRIVATE_FACILITY_WORDS.some(word => text.includes(word));
+}
+
+function getSubwayOperator(report, place) {
+  const text = getContextText(report, place);
+  if (['9호선', '언주', '선정릉', '봉은사', '종합운동장'].some(word => text.includes(word))) return '서울시메트로9호선';
+  if (text.includes('신분당')) return '신분당선 운영사';
+  if (text.includes('공항철도')) return '공항철도';
+  if (['경의중앙', '수인분당', '분당선', '경춘', '경강', '중앙선', '경의선'].some(word => text.includes(word))) return '코레일';
+  if (text.includes('1호선')) return '서울교통공사/코레일';
+  return '서울교통공사';
+}
+
 function formatNumber(value) {
   return new Intl.NumberFormat('ko-KR').format(value);
 }
@@ -179,8 +226,11 @@ function getRisk(report, place) {
 
 function getAgency(report, place) {
   if (report.responsible_agency) return report.responsible_agency;
-  if (['elevator_broken', 'escalator_broken', 'lift_broken', 'tactile_block', 'signage', 'accessible_toilet', 'transfer_passage', 'platform_gap', 'stairs', 'blocked'].includes(report.issue_type) && place?.station_name) return '서울교통공사';
+  const category = report.ai_category || getIssueLabel(report.issue_type);
+  if (SUBWAY_FACILITY_CATEGORIES.has(category) && hasSubwayContext(report, place)) return getSubwayOperator(report, place);
+  if (['엘리베이터 고장', '에스컬레이터 고장', '장애인화장실 문제', '안내 표지 부족'].includes(category) && hasPrivateFacilityContext(report, place)) return '민간 시설 관리자';
   if (['curb', 'steep_slope', 'slope', 'construction'].includes(report.issue_type)) return '도로관리사업소';
+  if (['급경사', '공사 중', '통행 불가', '보도 파손', '임시 통행로 문제'].includes(category)) return '도로관리사업소';
   const region = inferRegion(report, place);
   return region.endsWith('구') ? `${region}청` : '기타 기관';
 }

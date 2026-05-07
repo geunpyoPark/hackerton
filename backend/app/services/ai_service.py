@@ -72,6 +72,81 @@ CATEGORY_AGENCY_RULES = {
     "임시 통행로 문제": "도로관리사업소",
 }
 
+SUBWAY_FACILITY_CATEGORIES = {
+    "엘리베이터 고장",
+    "에스컬레이터 고장",
+    "휠체어 리프트 고장",
+    "계단/턱",
+    "안내 표지 부족",
+    "점자블록 문제",
+    "장애인화장실 문제",
+    "환승 통로 불편",
+    "승강장 간격 위험",
+    "통행 불가",
+}
+
+ROAD_CATEGORIES = {
+    "급경사",
+    "공사 중",
+    "통행 불가",
+    "보도 파손",
+    "임시 통행로 문제",
+}
+
+DISTRICT_KEYWORDS = {
+    "강남구": ["강남", "삼성", "코엑스", "역삼", "선릉", "논현", "신사", "압구정"],
+    "송파구": ["송파", "잠실", "석촌", "문정", "가락", "방이"],
+    "서초구": ["서초", "교대", "양재", "고속터미널", "반포", "방배"],
+    "마포구": ["마포", "합정", "홍대", "공덕", "상암"],
+    "영등포구": ["영등포", "당산", "여의도", "문래"],
+    "성동구": ["성동", "왕십리", "성수", "뚝섬"],
+    "중구": ["서울역", "시청", "을지로", "명동", "충무로", "동대문역사문화공원"],
+}
+
+
+def get_place_text(place: dict, report: dict | None = None) -> str:
+    report = report or {}
+    return " ".join(
+        str(value or "")
+        for value in [
+            place.get("name"),
+            place.get("station_name"),
+            place.get("line_name"),
+            place.get("address"),
+            place.get("road_address"),
+            report.get("description"),
+        ]
+    )
+
+
+def has_subway_context(place: dict, report: dict | None = None) -> bool:
+    text = get_place_text(place, report)
+    if re.search(r"[가-힣A-Za-z0-9]+역(\s|$|[0-9번출구])", text):
+        return True
+    return any(word in text for word in ["지하철", "출구", "승강장", "환승", "개찰구", "플랫폼", "역사", "호선"])
+
+
+def has_private_facility_context(place: dict, report: dict | None = None) -> bool:
+    text = get_place_text(place, report)
+    return any(word in text for word in ["코엑스", "몰", "백화점", "마트", "상가", "빌딩", "타워", "병원", "대학교", "캠퍼스"])
+
+
+def get_subway_operator(place: dict, report: dict | None = None) -> str:
+    text = get_place_text(place, report)
+    if any(word in text for word in ["9호선", "언주", "선정릉", "봉은사", "종합운동장"]):
+        return "서울시메트로9호선"
+    if "신분당" in text:
+        return "신분당선 운영사"
+    if "공항철도" in text:
+        return "공항철도"
+    if any(word in text for word in ["경의중앙", "수인분당", "분당선", "경춘", "경강", "중앙선", "경의선"]):
+        return "코레일"
+    if "1호선" in text:
+        return "서울교통공사/코레일"
+    if re.search(r"[2-8]호선", text):
+        return "서울교통공사"
+    return "서울교통공사"
+
 
 def get_report_category(issue_type: str) -> str:
     return REPORT_CATEGORY_LABELS.get(issue_type, "기타")
@@ -124,37 +199,31 @@ def get_report_severity(issue_type: str, category: str = "", description: str = 
 
 
 def get_region_agency(place: dict) -> str:
-    place_text = f"{place.get('name', '')} {place.get('station_name', '')}"
-    if "강남" in place_text or "삼성" in place_text or "코엑스" in place_text:
-        return "강남구청"
-    if "송파" in place_text or "잠실" in place_text:
-        return "송파구청"
-    if "서초" in place_text or "교대" in place_text:
-        return "서초구청"
+    place_text = get_place_text(place)
+    for district, keywords in DISTRICT_KEYWORDS.items():
+        if district in place_text or any(keyword in place_text for keyword in keywords):
+            return f"{district}청"
     return "기타 기관"
 
 
-def get_responsible_agency(issue_type: str, place: dict, category: str = "") -> str:
-    station_name = place.get("station_name") or ""
-    if issue_type in {
-        "elevator_broken",
-        "escalator_broken",
-        "lift_broken",
-        "tactile_block",
-        "signage",
-        "accessible_toilet",
-        "transfer_passage",
-        "platform_gap",
-        "stairs",
-        "blocked",
-    } and station_name:
-        return "서울교통공사"
+def get_responsible_agency(issue_type: str, place: dict, category: str = "", report: dict | None = None) -> str:
+    issue_category = category or get_report_category(issue_type)
+    report = report or {}
+
+    if issue_category in SUBWAY_FACILITY_CATEGORIES and has_subway_context(place, report):
+        return get_subway_operator(place, report)
+
+    if issue_category in {"엘리베이터 고장", "에스컬레이터 고장", "장애인화장실 문제", "안내 표지 부족"} and has_private_facility_context(place, report):
+        return "민간 시설 관리자"
+
     if issue_type in {"curb", "steep_slope", "slope", "construction"}:
+        return "도로관리사업소"
+    if issue_category in ROAD_CATEGORIES:
         return "도로관리사업소"
     agency_rule = CATEGORY_AGENCY_RULES.get(category)
     if agency_rule == "구청":
         return get_region_agency(place)
-    if agency_rule:
+    if agency_rule and agency_rule != "서울교통공사":
         return agency_rule
     return get_region_agency(place)
 
@@ -173,7 +242,7 @@ def build_rule_based_classification(report: dict, place: dict, user_type: str) -
     description = report.get("description") or ""
     category = infer_other_category(description) if issue_type == "other" else get_report_category(issue_type)
     severity = get_report_severity(issue_type, category, description)
-    agency = get_responsible_agency(issue_type, place, category)
+    agency = get_responsible_agency(issue_type, place, category, report)
     place_name = place.get("name") or "선택 장소"
     has_image = bool(report.get("image_url"))
 
@@ -283,13 +352,15 @@ JSON 형식:
   "ai_category": "{categories} 중 하나",
   "ai_severity": "high | medium | low 중 하나",
   "ai_summary": "기관 담당자가 한눈에 볼 수 있는 한 줄 요약",
-  "responsible_agency": "서울교통공사 | 도로관리사업소 | 구청명 | 기타 기관 중 하나",
+  "responsible_agency": "서울교통공사 | 서울시메트로9호선 | 코레일 | 신분당선 운영사 | 공항철도 | 도로관리사업소 | 구청명 | 민간 시설 관리자 | 기타 기관 중 하나",
   "priority_score": 0부터 100 사이 정수
 }}
 
 분류 기준:
 - 지하철역 내부/출구의 엘리베이터, 계단, 안내 표지는 주로 서울교통공사
 - 지하철역 내부의 에스컬레이터, 휠체어 리프트, 점자블록, 장애인화장실, 환승 통로, 승강장 간격 문제는 주로 서울교통공사
+- 9호선 역사 시설은 서울시메트로9호선, 신분당선은 신분당선 운영사, 공항철도는 공항철도, 경의중앙/수인분당/경춘 등 광역철도는 코레일로 분류
+- 백화점, 쇼핑몰, 병원, 대학교, 민간 건물 내부 엘리베이터/에스컬레이터/화장실 문제는 민간 시설 관리자로 분류
 - 보도 파손, 급경사, 공사 중, 임시 통행로는 주로 도로관리사업소
 - 불법 주정차, 장애물 적치, 조명 부족은 주로 해당 구청
 - 사용자가 기타를 선택했더라도 상세 설명을 보고 가장 가까운 세부 카테고리로 분류
@@ -403,7 +474,12 @@ async def classify_report(report: dict, place: dict, user_type: str) -> dict:
                     "ai_category": classification.get("ai_category") or fallback["ai_category"],
                     "ai_severity": severity if severity in {"high", "medium", "low"} else fallback["ai_severity"],
                     "ai_summary": classification.get("ai_summary") or fallback["ai_summary"],
-                    "responsible_agency": classification.get("responsible_agency") or fallback["responsible_agency"],
+                    "responsible_agency": get_responsible_agency(
+                        issue_type=report.get("issue_type", ""),
+                        place=place,
+                        category=classification.get("ai_category") or fallback["ai_category"],
+                        report=report,
+                    ),
                     "priority_score": max(0, min(100, priority_score)),
                     "source": "gemini",
                     "model": model,

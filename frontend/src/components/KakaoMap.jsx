@@ -81,6 +81,7 @@ export function KakaoMap({
   height = '100%',
   disableFallbackRoute = false,
   onPlaceClick,
+  onMapClick,
 }) {
   const mapNodeRef = useRef(null);
   const mapRef = useRef(null);
@@ -114,6 +115,41 @@ export function KakaoMap({
           center: targetCenter,
           level: 6,
         });
+
+        if (onMapClick) {
+          const geocoder = maps.services ? new maps.services.Geocoder() : null;
+          maps.event.addListener(map, 'click', (event) => {
+            const latlng = event.latLng;
+            const point = {
+              lat: latlng.getLat(),
+              lng: latlng.getLng(),
+              name: '지도 선택 위치',
+              address: '',
+              road_address: '',
+            };
+
+            if (!geocoder) {
+              onMapClick(point);
+              return;
+            }
+
+            geocoder.coord2Address(point.lng, point.lat, (result, status) => {
+              if (status !== maps.services.Status.OK || !result?.[0]) {
+                onMapClick(point);
+                return;
+              }
+
+              const address = result[0].address?.address_name || '';
+              const roadAddress = result[0].road_address?.address_name || '';
+              onMapClick({
+                ...point,
+                name: roadAddress || address || point.name,
+                address,
+                road_address: roadAddress,
+              });
+            });
+          });
+        }
 
         const routePathOnly = routePath.length > 1
           ? routePath
@@ -183,7 +219,7 @@ export function KakaoMap({
       mapRef.current = null;
       centerRef.current = null;
     };
-  }, [center, disableFallbackRoute, mapPlaces, onPlaceClick, routePath, routeSegments]);
+  }, [center, disableFallbackRoute, mapPlaces, onMapClick, onPlaceClick, routePath]);
 
   useEffect(() => {
     if (!mapNodeRef.current || !window.ResizeObserver) return undefined;
