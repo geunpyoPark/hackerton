@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AR } from '../design';
 import { KakaoMap } from '../components/KakaoMap';
 import { TabBar } from '../components/TabBar';
@@ -66,6 +66,7 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
   const [showMyReports, setShowMyReports] = useState(false);
   const [myReportList, setMyReportList] = useState([]);
   const [loadingReports, setLoadingReports] = useState(false);
+  const skipNextPlaceSearchRef = useRef(false);
 
   const myReportsCount = reports.filter(report => report.user_id === userId).length;
   const selectedPlace = places[0] || PLACES[0];
@@ -91,6 +92,11 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
     }
 
     if (currentLocation && customName === '현재 위치') {
+      return undefined;
+    }
+
+    if (skipNextPlaceSearchRef.current) {
+      skipNextPlaceSearchRef.current = false;
       return undefined;
     }
 
@@ -143,7 +149,10 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
         setPlaceSearchState('idle');
         setLocationState('ready');
         setLocationMessage('현재 위치가 적용되었습니다.');
-        if (!customPlaceName.trim()) setCustomPlaceName('현재 위치');
+        if (!customPlaceName.trim()) {
+          skipNextPlaceSearchRef.current = true;
+          setCustomPlaceName('현재 위치');
+        }
       },
       error => {
         setLocationState('error');
@@ -171,6 +180,24 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
       setLocationMessage('');
     }
   }
+
+  const handleMapPointSelect = useCallback((point) => {
+    const nextName = point.road_address || point.address || '지도 선택 위치';
+    skipNextPlaceSearchRef.current = true;
+    setCustomPlaceName(nextName);
+    setCurrentLocation(null);
+    setSearchedPlace({
+      name: nextName,
+      lat: point.lat,
+      lng: point.lng,
+      address: point.address || nextName,
+      road_address: point.road_address || '',
+      station_name: nextName,
+    });
+    setPlaceSearchState('ready');
+    setLocationState('ready');
+    setLocationMessage('지도에서 선택한 위치가 적용되었습니다.');
+  }, []);
 
   function clearCustomPlace() {
     setCustomPlaceName('');
@@ -373,17 +400,31 @@ export function ReportScreen({ onNavigate, userType = 'wheelchair', userId, plac
             height: 130, borderRadius: 12, overflow: 'hidden',
             position: 'relative', border: `1px solid ${AR.border}`,
           }}>
-            <KakaoMap places={[{ ...previewPlace, risk: 'red' }]}/>
+            <KakaoMap
+              places={[{ ...previewPlace, risk: 'red' }]}
+              onMapClick={handleMapPointSelect}
+            />
             <div style={{
-              position: 'absolute', inset: 0,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              position: 'absolute',
+              left: 10,
+              bottom: 10,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 9px',
+              borderRadius: 999,
+              background: 'rgba(255,255,255,0.94)',
+              color: AR.ink,
+              fontSize: 11,
+              fontWeight: 800,
+              boxShadow: '0 2px 8px rgba(15,23,42,0.14)',
               pointerEvents: 'none',
             }}>
-              <svg width="32" height="38" viewBox="0 0 24 28" fill="none">
-                <path d="M12 1C6.5 1 2 5.5 2 11c0 7 10 16 10 16s10-9 10-16c0-5.5-4.5-10-10-10z"
-                      fill={AR.blue} stroke="#fff" strokeWidth="2"/>
-                <circle cx="12" cy="11" r="3.5" fill="#fff"/>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke={AR.blue} strokeWidth="2" strokeLinecap="round"/>
+                <circle cx="12" cy="12" r="5" stroke={AR.blue} strokeWidth="2"/>
               </svg>
+              지도 클릭으로 위치 선택
             </div>
           </div>
         </Section>
