@@ -15,25 +15,7 @@
 - 수상: 스마트정보통신공학과 해커톤 최우수상
 - 주요 기술: React, Vite, FastAPI, Supabase, Kakao Maps, TMAP, ODsay, Gemini, Cloudinary
 
-## 2. 구현 화면
-
-### 사용자 화면
-
-카카오 로그인, 사용자 유형 선택, 장소 검색, 도보·대중교통 경로 확인, 경로 위 위험 요소 표시 흐름입니다.
-
-![AbleRoute 사용자 경로 탐색 화면](docs/images/ableroute-user-route.png)
-
-불편 사항 제보, 이미지 업로드, 제보 이력 조회, 활동 기록 확인 흐름입니다.
-
-![AbleRoute 사용자 제보 및 활동 화면](docs/images/ableroute-user-report-profile.png)
-
-### 관리자 화면
-
-기관 관리자가 전체 민원 현황, 지역별 위험도, 민원 유형, AI 인사이트를 한눈에 확인하는 대시보드입니다.
-
-![AbleRoute 기관 관리자 대시보드](docs/images/ableroute-admin-dashboard.png)
-
-## 3. 문제 정의
+## 2. 문제 정의
 
 교통약자는 일반적인 길찾기 서비스만으로는 실제 이동 가능 여부를 판단하기 어렵습니다.
 
@@ -46,7 +28,7 @@ AbleRoute는 다음 문제를 해결하고자 했습니다.
 - 제보 내용이 자유 형식이라 담당 기관과 처리 우선순위를 정하기 어려움
 - 외부 API 또는 데이터베이스 연결 실패 시 시연과 서비스 흐름이 중단될 수 있음
 
-## 4. 주요 기능
+## 3. 주요 기능
 
 ### 사용자 기능
 
@@ -79,6 +61,24 @@ AbleRoute는 다음 문제를 해결하고자 했습니다.
 - 데이터 저장
   - Supabase에 사용자, 장소, 제보 데이터를 저장
   - 데이터베이스 연결이 어려운 환경에서는 데모 데이터와 브라우저 저장소를 사용
+
+## 4. 구현 화면
+
+### 사용자 화면
+
+카카오 로그인, 사용자 유형 선택, 장소 검색, 도보·대중교통 경로 확인, 경로 위 위험 요소 표시 흐름입니다.
+
+![AbleRoute 사용자 경로 탐색 화면](docs/images/ableroute-user-route.png)
+
+불편 사항 제보, 이미지 업로드, 제보 이력 조회, 활동 기록 확인 흐름입니다.
+
+![AbleRoute 사용자 제보 및 활동 화면](docs/images/ableroute-user-report-profile.png)
+
+### 관리자 화면
+
+기관 관리자가 전체 민원 현황, 지역별 위험도, 민원 유형, AI 인사이트를 한눈에 확인하는 대시보드입니다.
+
+![AbleRoute 기관 관리자 대시보드](docs/images/ableroute-admin-dashboard.png)
 
 ## 5. 나의 역할
 
