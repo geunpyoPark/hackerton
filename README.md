@@ -15,7 +15,25 @@
 - 수상: 스마트정보통신공학과 해커톤 최우수상
 - 주요 기술: React, Vite, FastAPI, Supabase, Kakao Maps, TMAP, ODsay, Gemini, Cloudinary
 
-## 2. 문제 정의
+## 2. 구현 화면
+
+### 사용자 화면
+
+카카오 로그인, 사용자 유형 선택, 장소 검색, 도보·대중교통 경로 확인, 경로 위 위험 요소 표시 흐름입니다.
+
+![AbleRoute 사용자 경로 탐색 화면](docs/images/ableroute-user-route.png)
+
+불편 사항 제보, 이미지 업로드, 제보 이력 조회, 활동 기록 확인 흐름입니다.
+
+![AbleRoute 사용자 제보 및 활동 화면](docs/images/ableroute-user-report-profile.png)
+
+### 관리자 화면
+
+기관 관리자가 전체 민원 현황, 지역별 위험도, 민원 유형, AI 인사이트를 한눈에 확인하는 대시보드입니다.
+
+![AbleRoute 기관 관리자 대시보드](docs/images/ableroute-admin-dashboard.png)
+
+## 3. 문제 정의
 
 교통약자는 일반적인 길찾기 서비스만으로는 실제 이동 가능 여부를 판단하기 어렵습니다.
 
@@ -28,7 +46,7 @@ AbleRoute는 다음 문제를 해결하고자 했습니다.
 - 제보 내용이 자유 형식이라 담당 기관과 처리 우선순위를 정하기 어려움
 - 외부 API 또는 데이터베이스 연결 실패 시 시연과 서비스 흐름이 중단될 수 있음
 
-## 3. 주요 기능
+## 4. 주요 기능
 
 ### 사용자 기능
 
@@ -62,7 +80,7 @@ AbleRoute는 다음 문제를 해결하고자 했습니다.
   - Supabase에 사용자, 장소, 제보 데이터를 저장
   - 데이터베이스 연결이 어려운 환경에서는 데모 데이터와 브라우저 저장소를 사용
 
-## 4. 나의 역할
+## 5. 나의 역할
 
 **팀장 · Backend / AI / 서비스 연동**
 
@@ -73,7 +91,7 @@ AbleRoute는 다음 문제를 해결하고자 했습니다.
 - Vite 프록시를 통해 TMAP 도보 경로 API 호출 경로를 정리
 - 경로 주변 위험 제보를 계산해 지도에서 확인할 수 있도록 개선
 
-## 5. 트러블 슈팅
+## 6. 트러블 슈팅
 
 | 문제 | 발생 부분 | 해결 방법 |
 | --- | --- | --- |
@@ -84,7 +102,7 @@ AbleRoute는 다음 문제를 해결하고자 했습니다.
 | TMAP 호출 주소와 브라우저 요청 제한 문제 | 도보 경로 API 호출 | Vite 개발 서버 프록시에서 `/api/tmap` 요청을 TMAP Open API 주소로 넘기도록 설정 |
 | 자유 형식 제보로 담당 기관 분류가 어려움 | AI 제보 분류 | 지하철 시설, 도로, 구청 담당 문제를 기준으로 분류 규칙을 만들고, 위치·제보 유형·설명 내용을 함께 활용해 담당 기관을 추천 |
 
-## 6. 시스템 구성
+## 7. 시스템 구성
 
 ```text
 React Web App
@@ -106,7 +124,7 @@ Python FastAPI
         Gemini
 ```
 
-## 7. 기술 스택
+## 8. 기술 스택
 
 | 구분 | 기술 |
 | --- | --- |
@@ -118,7 +136,7 @@ Python FastAPI
 | Image Storage | Cloudinary |
 | Collaboration | Git, GitHub |
 
-## 8. 설치 및 실행
+## 9. 설치 및 실행
 
 ### 사전 준비
 
@@ -158,7 +176,7 @@ curl http://127.0.0.1:8000/
 
 주요 외부 서비스는 Supabase, Kakao Maps, TMAP, ODsay, Gemini, Cloudinary입니다. 환경변수가 없어도 데모 데이터와 대체 화면으로 주요 기능을 확인할 수 있습니다.
 
-## 9. 프로젝트 구조
+## 10. 프로젝트 구조
 
 ```text
 hackerton/
@@ -201,7 +219,7 @@ hackerton/
 └── README.md                         # 실행 방법 및 프로젝트 안내
 ```
 
-## 10. 팀 구성
+## 11. 팀 구성
 
 스마트정보통신공학과 해커톤 팀 프로젝트로 진행했습니다.
 
@@ -211,6 +229,6 @@ hackerton/
 | Frontend / UI | 팀원 |
 | Backend / Data | 팀원 |
 
-## 11. License
+## 12. License
 
 This project is for educational and portfolio purposes.
