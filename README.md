@@ -226,8 +226,8 @@ hackerton/
 | 역할 | 담당 |
 | --- | --- |
 | 팀장 · Backend / AI / 서비스 연동 | 박근표 |
-| Frontend / UI | 팀원 |
-| Backend / Data | 팀원 |
+| Frontend / UI | 김해수 |
+| Backend / Data | 김유나 |
 
 ## 12. License
 
